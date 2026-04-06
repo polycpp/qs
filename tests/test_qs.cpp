@@ -438,7 +438,7 @@ TEST(QsStringifyTest, EmptyArrayWithAllowEmptyArrays) {
     StringifyOptions opts;
     opts.allowEmptyArrays = true;
     auto result = stringify(obj, opts);
-    EXPECT_EQ(result, "a%5B%5D");
+    EXPECT_EQ(result, "a[]");
 }
 
 // ============================================================================
@@ -643,4 +643,125 @@ TEST(QsEdgeCaseTest, CommaRoundTrip) {
     auto str = stringify(obj, sopts);
     // Single-element with commaRoundTrip should use bracket notation
     EXPECT_EQ(str, "a[]=b");
+}
+
+// ============================================================================
+// encodeDotInKeys Tests
+// ============================================================================
+
+TEST(QsStringifyTest, EncodeDotInKeysBasic) {
+    // Keys containing dots should have them encoded as %2E (not %252E)
+    JsonValue obj = JsonObject{
+        {"a", JsonObject{{"b.c", "d"}}}
+    };
+    StringifyOptions opts;
+    opts.allowDots = true;
+    opts.encodeDotInKeys = true;
+    opts.encode = false;
+    auto result = stringify(obj, opts);
+    EXPECT_EQ(result, "a.b%2Ec=d");
+}
+
+TEST(QsStringifyTest, EncodeDotInKeysWithEncodeEnabled) {
+    // Dots must become %2E, not double-encoded to %252E
+    JsonValue obj = JsonObject{
+        {"a", JsonObject{{"b.c", "d e"}}}
+    };
+    StringifyOptions opts;
+    opts.allowDots = true;
+    opts.encodeDotInKeys = true;
+    // encode defaults to true
+    auto result = stringify(obj, opts);
+    // Key dot -> %2E, value space -> %20, bracket chars from key encoding
+    EXPECT_NE(result.find("%2E"), std::string::npos) << "dot should be %2E";
+    EXPECT_EQ(result.find("%252E"), std::string::npos) << "must not double-encode";
+}
+
+TEST(QsStringifyTest, EncodeDotInKeysRoundTrip) {
+    // Stringify with encodeDotInKeys produces %2E for in-key dots
+    JsonValue obj = JsonObject{
+        {"a", JsonObject{{"b.c", "d"}}}
+    };
+    StringifyOptions sopts;
+    sopts.allowDots = true;
+    sopts.encodeDotInKeys = true;
+    sopts.encode = false;
+    auto str = stringify(obj, sopts);
+    EXPECT_EQ(str, "a.b%2Ec=d") << "stringify should produce a.b%2Ec=d";
+
+    // Parse with decodeDotInKeys: %2E is decoded to . BEFORE dot-splitting,
+    // so a.b%2Ec becomes a.b.c (three nesting levels). This matches npm qs.
+    ParseOptions popts;
+    popts.allowDots = true;
+    popts.decodeDotInKeys = true;
+    auto parsed = parse(str, popts);
+    EXPECT_TRUE(parsed.isObject());
+    EXPECT_TRUE(parsed.hasKey("a")) << "should have top-level key 'a'";
+    EXPECT_TRUE(parsed["a"].isObject()) << "a should be an object";
+    EXPECT_TRUE(parsed["a"].hasKey("b")) << "a should have key 'b'";
+    EXPECT_TRUE(parsed["a"]["b"].isObject()) << "a.b should be an object";
+    EXPECT_EQ(parsed["a"]["b"]["c"].asString(), "d");
+}
+
+// ============================================================================
+// Unreserved Character Encoding Tests
+// ============================================================================
+
+TEST(QsStringifyTest, ExclamationMarkEncoded) {
+    // npm qs encodes ! ' * (they are not in the unreserved set)
+    JsonValue obj = JsonObject{{"a", "hello!"}};
+    auto result = stringify(obj);
+    EXPECT_EQ(result, "a=hello%21");
+}
+
+TEST(QsStringifyTest, ApostropheEncoded) {
+    JsonValue obj = JsonObject{{"a", "it's"}};
+    auto result = stringify(obj);
+    EXPECT_EQ(result, "a=it%27s");
+}
+
+TEST(QsStringifyTest, AsteriskEncoded) {
+    JsonValue obj = JsonObject{{"a", "wild*card"}};
+    auto result = stringify(obj);
+    EXPECT_EQ(result, "a=wild%2Acard");
+}
+
+TEST(QsStringifyTest, RFC1738ParenthesesNotEncoded) {
+    // RFC1738 format additionally leaves ( ) unencoded
+    JsonValue obj = JsonObject{{"a", "f(x)"}};
+    StringifyOptions opts;
+    opts.format = Format::RFC1738;
+    auto result = stringify(obj, opts);
+    EXPECT_EQ(result, "a=f(x)");
+}
+
+TEST(QsStringifyTest, RFC3986ParenthesesEncoded) {
+    // RFC3986 format DOES encode ( )
+    JsonValue obj = JsonObject{{"a", "f(x)"}};
+    auto result = stringify(obj);
+    EXPECT_EQ(result, "a=f%28x%29");
+}
+
+TEST(QsStringifyTest, UnreservedCharsRoundTrip) {
+    // Values with ! ' * should survive stringify -> parse round-trip
+    auto str = stringify(JsonValue(JsonObject{{"a", "a!b'c*d"}}));
+    auto parsed = parse(str);
+    EXPECT_EQ(parsed["a"].asString(), "a!b'c*d");
+}
+
+TEST(QsStringifyTest, EncodeDotInKeysSentinelNotInValue) {
+    // Byte \x01 in a value must not be corrupted by the encodeDotInKeys
+    // sentinel post-processing — only key portions should be patched.
+    std::string val(1, '\x01'); // single byte 0x01
+    JsonValue obj = JsonObject{
+        {"a", JsonObject{{"b.c", val}}}
+    };
+    StringifyOptions opts;
+    opts.allowDots = true;
+    opts.encodeDotInKeys = true;
+    // encode=true: \x01 in the value becomes %01
+    auto result = stringify(obj, opts);
+    // Key dot -> %2E, value \x01 -> %01 (must NOT become %2E)
+    EXPECT_NE(result.find("=%01"), std::string::npos)
+        << "value's %01 must survive; got: " << result;
 }

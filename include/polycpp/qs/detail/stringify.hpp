@@ -9,7 +9,6 @@
 #include <string>
 #include <vector>
 #include <unordered_set>
-#include <functional>
 
 #include <polycpp/core/json.hpp>
 #include <polycpp/core/error.hpp>
@@ -131,7 +130,8 @@ inline void stringifyRecursive(
         // Empty array handling
         if (arr.empty()) {
             if (opts.allowEmptyArrays) {
-                results.push_back(encodeComponent(prefix + "[]", opts, true));
+                // Encode the prefix (key) but always emit literal brackets []
+                results.push_back(encodeComponent(prefix, opts, true) + "[]");
             }
             return;
         }
@@ -208,27 +208,25 @@ inline void stringifyRecursive(
         for (const auto& [key, val] : map) {
             if (opts.skipNulls && val.isNull()) continue;
 
+            // Build the prefix with raw (unencoded) keys.
+            // Encoding happens once at the leaf level via encodeComponent.
+            // This matches npm qs behavior and avoids double-encoding.
             std::string childPrefix;
             if (prefix.empty()) {
-                childPrefix = encodeComponent(key, opts, true);
-            } else if (opts.allowDots && !opts.encodeDotInKeys) {
-                childPrefix = prefix + "." + encodeComponent(key, opts, true);
+                childPrefix = key;
             } else if (opts.allowDots && opts.encodeDotInKeys) {
-                // Encode dots in keys as %2E
-                std::string encodedKey = key;
-                // Replace dots with %2E in the key
-                std::string dotEncoded;
-                for (char c : encodedKey) {
-                    if (c == '.') {
-                        dotEncoded += "%2E";
-                    } else {
-                        dotEncoded += c;
-                    }
+                // Replace in-key dots with sentinel \x01; post-processed
+                // in stringifyImpl after leaf-level encoding.
+                std::string dotMarked;
+                dotMarked.reserve(key.size());
+                for (char c : key) {
+                    dotMarked += (c == '.') ? '\x01' : c;
                 }
-                childPrefix = prefix + "." + encodeComponent(dotEncoded, opts, true);
+                childPrefix = prefix + "." + dotMarked;
+            } else if (opts.allowDots) {
+                childPrefix = prefix + "." + key;
             } else {
-                childPrefix = prefix + "[" +
-                    encodeComponent(key, opts, true) + "]";
+                childPrefix = prefix + "[" + key + "]";
             }
 
             stringifyRecursive(val, childPrefix, opts, visited, results);
@@ -260,30 +258,43 @@ inline std::string stringifyImpl(const JsonValue& obj, const StringifyOptions& o
     for (const auto& [key, val] : map) {
         if (opts.skipNulls && val.isNull()) continue;
 
-        std::string encodedKey = encodeComponent(key, opts, true);
-        stringifyRecursive(val, encodedKey, opts, visited, parts);
+        // Pass raw key as prefix; encoding happens at the leaf level.
+        stringifyRecursive(val, key, opts, visited, parts);
+    }
+
+    // Post-process encodeDotInKeys sentinel: \x01 marks in-key dots.
+    // After leaf-level encoding, \x01 becomes %01 (encode=true) or
+    // stays as \x01 (encode=false / encodeValuesOnly). Replace either
+    // form with %2E, but ONLY in the key portion of each key=value
+    // pair to avoid corrupting values that happen to contain \x01.
+    if (opts.encodeDotInKeys) {
+        for (auto& part : parts) {
+            auto eqPos = part.find('=');
+            size_t keyEnd = (eqPos != std::string::npos) ? eqPos : part.size();
+            std::string fixed;
+            fixed.reserve(part.size());
+            for (size_t i = 0; i < keyEnd; ++i) {
+                if (part[i] == '\x01') {
+                    fixed += "%2E";
+                } else if (i + 2 < keyEnd &&
+                           part[i] == '%' && part[i+1] == '0' &&
+                           part[i+2] == '1') {
+                    fixed += "%2E";
+                    i += 2;
+                } else {
+                    fixed += part[i];
+                }
+            }
+            // Append the value portion unchanged
+            fixed += part.substr(keyEnd);
+            part = std::move(fixed);
+        }
     }
 
     std::string joined;
     for (size_t i = 0; i < parts.size(); ++i) {
         if (i > 0) joined += opts.delimiter;
         joined += parts[i];
-    }
-
-    // Apply RFC1738 format: replace %20 with +
-    if (opts.format == Format::RFC1738) {
-        std::string formatted;
-        formatted.reserve(joined.size());
-        for (size_t i = 0; i < joined.size(); ++i) {
-            if (i + 2 < joined.size() &&
-                joined[i] == '%' && joined[i+1] == '2' && joined[i+2] == '0') {
-                formatted += '+';
-                i += 2;
-            } else {
-                formatted += joined[i];
-            }
-        }
-        joined = formatted;
     }
 
     if (opts.addQueryPrefix && !joined.empty()) {

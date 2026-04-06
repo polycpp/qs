@@ -9,9 +9,7 @@
 #include <string>
 #include <vector>
 #include <cstdint>
-#include <sstream>
-#include <iomanip>
-#include <algorithm>
+#include <functional>
 
 #include <polycpp/core/json.hpp>
 #include <polycpp/qs/qs.hpp>
@@ -20,7 +18,8 @@ namespace polycpp {
 namespace qs {
 namespace detail {
 
-/// @brief Characters that should NOT be percent-encoded (RFC3986 unreserved set).
+/// @brief Characters that should NOT be percent-encoded.
+/// Matches npm qs: RFC3986 unreserved set (A-Z a-z 0-9 - _ . ~).
 inline bool isUnreserved(char c) {
     return (c >= 'A' && c <= 'Z') ||
            (c >= 'a' && c <= 'z') ||
@@ -38,10 +37,11 @@ inline int hexVal(char c) {
 }
 
 /**
- * @brief Percent-encode a string per RFC3986 (UTF-8).
+ * @brief Percent-encode a string (UTF-8).
  *
- * Encodes all characters except the RFC3986 unreserved set:
- * `A-Z a-z 0-9 - _ . ~`
+ * Encodes all characters except the unreserved set matching npm qs:
+ * `A-Z a-z 0-9 - _ . ~ ! ' *`
+ * In RFC1738 format, `(` and `)` are additionally left unencoded.
  *
  * @param str The input string to encode.
  * @param format The URI format (RFC3986 uses %20 for spaces, RFC1738 uses +).
@@ -59,6 +59,9 @@ inline std::string encode(const std::string& str, Format format = Format::RFC398
             result += static_cast<char>(c);
         } else if (c == ' ' && format == Format::RFC1738) {
             result += '+';
+        } else if (format == Format::RFC1738 && (c == '(' || c == ')')) {
+            // RFC1738 additionally leaves ( ) unencoded
+            result += static_cast<char>(c);
         } else {
             result += '%';
             result += hexChars[(c >> 4) & 0x0F];
@@ -84,6 +87,48 @@ inline std::string decode(const std::string& str) {
 
     for (size_t i = 0; i < str.size(); ++i) {
         if (str[i] == '%' && i + 2 < str.size()) {
+            int hi = hexVal(str[i + 1]);
+            int lo = hexVal(str[i + 2]);
+            if (hi >= 0 && lo >= 0) {
+                result += static_cast<char>((hi << 4) | lo);
+                i += 2;
+                continue;
+            }
+        }
+        if (str[i] == '+') {
+            result += ' ';
+        } else {
+            result += str[i];
+        }
+    }
+    return result;
+}
+
+/**
+ * @brief Percent-decode a string, preserving %2E (encoded dot).
+ *
+ * Used when decodeDotInKeys is enabled: %2E must survive decoding so
+ * that splitKeyIntoSegments can distinguish separator dots from in-key
+ * dots after dot-splitting.
+ *
+ * @param str The percent-encoded string.
+ * @return The decoded string with %2E sequences preserved.
+ * @since 0.1.0
+ */
+inline std::string decodePreserveDot(const std::string& str) {
+    std::string result;
+    result.reserve(str.size());
+
+    for (size_t i = 0; i < str.size(); ++i) {
+        if (str[i] == '%' && i + 2 < str.size()) {
+            // Preserve %2E / %2e
+            if (str[i+1] == '2' && (str[i+2] == 'E' || str[i+2] == 'e')) {
+                result += '%';
+                result += str[i+1];
+                result += str[i+2];
+                i += 2;
+                continue;
+            }
             int hi = hexVal(str[i + 1]);
             int lo = hexVal(str[i + 2]);
             if (hi >= 0 && lo >= 0) {
@@ -275,16 +320,6 @@ inline JsonValue compact(const JsonValue& value) {
 
     // Work on a mutable copy
     JsonValue result = value;
-
-    // BFS queue: collect pointers to all nested arrays/objects
-    struct QueueItem {
-        JsonValue* parent;
-        std::string key;
-        size_t index;
-        bool isArrayParent;
-    };
-
-    std::vector<JsonValue*> toCompact;
 
     // Recursive helper to compact arrays in-place
     std::function<void(JsonValue&)> compactRecursive;

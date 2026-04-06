@@ -8,8 +8,6 @@
 
 #include <string>
 #include <vector>
-#include <regex>
-#include <cmath>
 
 #include <polycpp/core/json.hpp>
 #include <polycpp/core/error.hpp>
@@ -38,33 +36,32 @@ inline std::vector<std::string> splitKeyIntoSegments(
 {
     std::string workKey = key;
 
-    // Convert dot notation to bracket notation if enabled
+    // Convert dot notation to bracket notation if enabled.
     if (opts.allowDots || opts.decodeDotInKeys) {
-        // If decodeDotInKeys, we need to decode %2E first
+        // Step 1: When decodeDotInKeys is true, decode %2E -> . BEFORE
+        // dot-splitting so that encoded dots act as nesting separators.
         if (opts.decodeDotInKeys) {
-            // Replace %2E (case-insensitive) with dots for key parsing
             std::string decoded;
             decoded.reserve(workKey.size());
-            for (size_t i = 0; i < workKey.size(); ++i) {
-                if (i + 2 < workKey.size() && workKey[i] == '%' &&
-                    (workKey[i+1] == '2') &&
-                    (workKey[i+2] == 'E' || workKey[i+2] == 'e')) {
+            for (size_t j = 0; j < workKey.size(); ++j) {
+                if (j + 2 < workKey.size() && workKey[j] == '%' &&
+                    workKey[j+1] == '2' &&
+                    (workKey[j+2] == 'E' || workKey[j+2] == 'e')) {
                     decoded += '.';
-                    i += 2;
+                    j += 2;
                 } else {
-                    decoded += workKey[i];
+                    decoded += workKey[j];
                 }
             }
             workKey = decoded;
         }
 
-        // Convert dot notation to bracket notation: a.b.c -> a[b][c]
+        // Step 2: Convert dot notation to bracket notation: a.b.c -> a[b][c]
         std::string converted;
         bool first = true;
         size_t i = 0;
         while (i < workKey.size()) {
-            if (workKey[i] == '.' && !first && workKey[i] != '[') {
-                // Check if we're not inside brackets
+            if (workKey[i] == '.' && !first) {
                 converted += '[';
                 ++i;
                 // Find the end of the segment (next dot or bracket)
@@ -88,7 +85,6 @@ inline std::vector<std::string> splitKeyIntoSegments(
                 ++i;
                 if (first) {
                     // Still in the parent segment
-                    // Check if next char is a dot or bracket
                     if (i < workKey.size() && (workKey[i] == '.' || workKey[i] == '[')) {
                         first = false;
                     }
@@ -195,41 +191,45 @@ inline JsonValue parseObject(
                 cleanRoot = root.substr(1, root.size() - 2);
             }
 
+            // When parseArrays is disabled, empty brackets [] map to key "0"
+            // (matches npm qs behavior)
+            if (cleanRoot.empty() && root == "[]" && !opts.parseArrays) {
+                cleanRoot = "0";
+            }
+
             // Check if this is a valid array index
             bool isValidArrayIndex = false;
-            int index = -1;
+            long long index = -1;
             if (!cleanRoot.empty() && opts.parseArrays) {
                 // Use Number::parseInt for JS-compatible parsing
                 double parsed = Number::parseInt(cleanRoot, 10);
                 if (!Number::isNaN(parsed) &&
                     root != cleanRoot && // Was wrapped in brackets
-                    std::to_string(static_cast<int>(parsed)) == cleanRoot && // No leading zeros
-                    parsed >= 0) {
-                    isValidArrayIndex = true;
-                    index = static_cast<int>(parsed);
+                    parsed >= 0 && parsed <= 1e15) { // Stay in safe integer range
+                    // Check for leading zeros by round-tripping through string
+                    long long intVal = static_cast<long long>(parsed);
+                    if (std::to_string(intVal) == cleanRoot) {
+                        isValidArrayIndex = true;
+                        index = intVal;
+                    }
                 }
             }
 
             if (isValidArrayIndex && index <= opts.arrayLimit) {
-                // Create sparse array
-                if (opts.throwOnLimitExceeded && index >= opts.arrayLimit) {
-                    throw RangeError("Array limit exceeded. Only " +
-                        std::to_string(opts.arrayLimit) + " element" +
-                        (opts.arrayLimit == 1 ? "" : "s") +
-                        " allowed in an array.");
-                }
+                // Create sparse array (index is within the allowed limit)
                 JsonArray arr;
-                arr.resize(index + 1);
-                arr[index] = std::move(leaf);
+                arr.resize(static_cast<size_t>(index) + 1);
+                arr[static_cast<size_t>(index)] = std::move(leaf);
                 leaf = JsonValue(std::move(arr));
             } else if (isValidArrayIndex && index > opts.arrayLimit) {
-                // Overflow: create object with numeric string key
+                // Index exceeds array limit
                 if (opts.throwOnLimitExceeded) {
                     throw RangeError("Array limit exceeded. Only " +
                         std::to_string(opts.arrayLimit) + " element" +
                         (opts.arrayLimit == 1 ? "" : "s") +
                         " allowed in an array.");
                 }
+                // Overflow: create object with numeric string key
                 obj[cleanRoot] = std::move(leaf);
                 leaf = JsonValue(std::move(obj));
             } else if (cleanRoot != "__proto__") {
@@ -273,13 +273,13 @@ inline JsonObject parseValues(const std::string& str, const ParseOptions& opts) 
         decoded.reserve(cleanStr.size());
         for (size_t i = 0; i < cleanStr.size(); ++i) {
             if (i + 2 < cleanStr.size() && cleanStr[i] == '%') {
-                if ((cleanStr[i+1] == '5' || cleanStr[i+1] == '5') &&
+                if (cleanStr[i+1] == '5' &&
                     (cleanStr[i+2] == 'B' || cleanStr[i+2] == 'b')) {
                     decoded += '[';
                     i += 2;
                     continue;
                 }
-                if ((cleanStr[i+1] == '5' || cleanStr[i+1] == '5') &&
+                if (cleanStr[i+1] == '5' &&
                     (cleanStr[i+2] == 'D' || cleanStr[i+2] == 'd')) {
                     decoded += ']';
                     i += 2;
@@ -306,51 +306,74 @@ inline JsonObject parseValues(const std::string& str, const ParseOptions& opts) 
         if (part.empty()) continue;
 
         // Find the = separator
-        // Handle bracket-equals: a[>=]=23 should split as key="a[>=]", val="23"
-        size_t bracketEqualsPos = part.find("]=");
-        size_t eqPos;
-        if (bracketEqualsPos != std::string::npos) {
-            eqPos = bracketEqualsPos + 1;
-        } else {
-            eqPos = part.find('=');
+        // Find the first '=' that is not inside brackets.
+        // This handles keys like a[>=]=23 where '=' appears inside brackets.
+        size_t eqPos = std::string::npos;
+        {
+            int bracketDepth = 0;
+            for (size_t j = 0; j < part.size(); ++j) {
+                if (part[j] == '[') {
+                    ++bracketDepth;
+                } else if (part[j] == ']') {
+                    if (bracketDepth > 0) --bracketDepth;
+                } else if (part[j] == '=' && bracketDepth == 0) {
+                    eqPos = j;
+                    break;
+                }
+            }
         }
 
         std::string key;
         std::string val;
         if (eqPos == std::string::npos) {
-            // No = sign
-            key = detail::decode(part);
+            // No = sign.  When decodeDotInKeys, preserve %2E in keys
+            // so splitKeyIntoSegments can distinguish separator dots
+            // from encoded in-key dots.
+            key = opts.decodeDotInKeys
+                ? detail::decodePreserveDot(part)
+                : detail::decode(part);
             if (opts.strictNullHandling) {
                 val = ""; // Will be replaced with null below
             } else {
                 val = "";
             }
         } else {
-            key = detail::decode(part.substr(0, eqPos));
+            key = opts.decodeDotInKeys
+                ? detail::decodePreserveDot(part.substr(0, eqPos))
+                : detail::decode(part.substr(0, eqPos));
             val = detail::decode(part.substr(eqPos + 1));
         }
 
-        // Handle comma splitting
-        if (opts.comma && val.find(',') != std::string::npos) {
-            auto commaParts = detail::split(val, ",", 0);
-            JsonArray arr;
-            for (auto& cp : commaParts) {
-                arr.push_back(JsonValue(std::move(cp)));
-            }
-            // Store as array value
-            auto it = result.find(key);
-            if (it != result.end()) {
-                // Duplicate key with comma: combine
-                if (opts.duplicates == Duplicates::combine) {
-                    it->second = detail::combine(it->second, JsonValue(std::move(arr)));
-                } else if (opts.duplicates == Duplicates::last) {
-                    it->second = JsonValue(std::move(arr));
+        // Skip empty keys (matches npm qs behavior: empty keys are dropped)
+        if (key.empty()) continue;
+
+        // Handle comma splitting — split on literal commas in the RAW
+        // value (before percent-decoding), then decode each part. This
+        // matches npm qs: encoded commas (%2C) are NOT treated as
+        // separators, only literal commas are.
+        if (opts.comma && eqPos != std::string::npos) {
+            std::string rawVal = part.substr(eqPos + 1);
+            if (rawVal.find(',') != std::string::npos) {
+                auto commaParts = detail::split(rawVal, ",", 0);
+                JsonArray arr;
+                for (auto& cp : commaParts) {
+                    arr.push_back(JsonValue(detail::decode(cp)));
                 }
-                // first: keep existing
-            } else {
-                result[key] = JsonValue(std::move(arr));
+                // Store as array value
+                auto it = result.find(key);
+                if (it != result.end()) {
+                    // Duplicate key with comma: combine
+                    if (opts.duplicates == Duplicates::combine) {
+                        it->second = detail::combine(it->second, JsonValue(std::move(arr)));
+                    } else if (opts.duplicates == Duplicates::last) {
+                        it->second = JsonValue(std::move(arr));
+                    }
+                    // first: keep existing
+                } else {
+                    result[key] = JsonValue(std::move(arr));
+                }
+                continue;
             }
-            continue;
         }
 
         // Create the value
@@ -365,9 +388,6 @@ inline JsonObject parseValues(const std::string& str, const ParseOptions& opts) 
         auto it = result.find(key);
         if (it != result.end()) {
             if (opts.duplicates == Duplicates::combine) {
-                // Check if key ends with [] - always combine
-                bool hasBrackets = key.size() >= 2 &&
-                    key.substr(key.size() - 2) == "[]";
                 it->second = detail::combine(it->second, value);
             } else if (opts.duplicates == Duplicates::last) {
                 it->second = value;

@@ -29,7 +29,6 @@
 
 #include <string>
 #include <vector>
-#include <optional>
 
 #include <polycpp/core/json.hpp>
 #include <polycpp/core/error.hpp>
