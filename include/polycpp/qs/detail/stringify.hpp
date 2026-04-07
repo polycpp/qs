@@ -32,6 +32,9 @@ inline std::string encodeComponent(const std::string& str,
                                     bool isKey) {
     if (!opts.encode) return str;
     if (opts.encodeValuesOnly && isKey) return str;
+    if (opts.charset == "iso-8859-1") {
+        return detail::encode(detail::utf8ToLatin1(str), opts.format);
+    }
     return detail::encode(str, opts.format);
 }
 

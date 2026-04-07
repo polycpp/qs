@@ -37,6 +37,56 @@ inline int hexVal(char c) {
 }
 
 /**
+ * @brief Convert a UTF-8 string to ISO-8859-1 bytes.
+ *
+ * Characters outside the Latin-1 range (U+0000..U+00FF) are replaced
+ * with '?'.
+ */
+inline std::string utf8ToLatin1(const std::string& str) {
+    std::string result;
+    result.reserve(str.size());
+    for (size_t i = 0; i < str.size(); ) {
+        unsigned char c = static_cast<unsigned char>(str[i]);
+        if (c < 0x80) {
+            result += static_cast<char>(c);
+            ++i;
+        } else if ((c & 0xE0) == 0xC0 && i + 1 < str.size()) {
+            unsigned char c2 = static_cast<unsigned char>(str[i + 1]);
+            uint32_t cp = ((c & 0x1F) << 6) | (c2 & 0x3F);
+            result += (cp <= 0xFF) ? static_cast<char>(cp) : '?';
+            i += 2;
+        } else if ((c & 0xF0) == 0xE0 && i + 2 < str.size()) {
+            result += '?';
+            i += 3;
+        } else if ((c & 0xF8) == 0xF0 && i + 3 < str.size()) {
+            result += '?';
+            i += 4;
+        } else {
+            result += '?';
+            ++i;
+        }
+    }
+    return result;
+}
+
+/**
+ * @brief Convert an ISO-8859-1 byte string to UTF-8.
+ */
+inline std::string latin1ToUtf8(const std::string& str) {
+    std::string result;
+    result.reserve(str.size() * 2);
+    for (unsigned char c : str) {
+        if (c < 0x80) {
+            result += static_cast<char>(c);
+        } else {
+            result += static_cast<char>(0xC0 | (c >> 6));
+            result += static_cast<char>(0x80 | (c & 0x3F));
+        }
+    }
+    return result;
+}
+
+/**
  * @brief Percent-encode a string (UTF-8).
  *
  * Encodes all characters except the unreserved set matching npm qs:

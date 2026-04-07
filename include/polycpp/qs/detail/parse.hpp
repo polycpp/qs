@@ -325,6 +325,7 @@ inline JsonObject parseValues(const std::string& str, const ParseOptions& opts) 
 
         std::string key;
         std::string val;
+        const bool isLatin1 = (opts.charset == "iso-8859-1");
         if (eqPos == std::string::npos) {
             // No = sign.  When decodeDotInKeys, preserve %2E in keys
             // so splitKeyIntoSegments can distinguish separator dots
@@ -332,6 +333,7 @@ inline JsonObject parseValues(const std::string& str, const ParseOptions& opts) 
             key = opts.decodeDotInKeys
                 ? detail::decodePreserveDot(part)
                 : detail::decode(part);
+            if (isLatin1) key = detail::latin1ToUtf8(key);
             if (opts.strictNullHandling) {
                 val = ""; // Will be replaced with null below
             } else {
@@ -341,7 +343,9 @@ inline JsonObject parseValues(const std::string& str, const ParseOptions& opts) 
             key = opts.decodeDotInKeys
                 ? detail::decodePreserveDot(part.substr(0, eqPos))
                 : detail::decode(part.substr(0, eqPos));
+            if (isLatin1) key = detail::latin1ToUtf8(key);
             val = detail::decode(part.substr(eqPos + 1));
+            if (isLatin1) val = detail::latin1ToUtf8(val);
         }
 
         // Skip empty keys (matches npm qs behavior: empty keys are dropped)
