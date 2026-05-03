@@ -24,7 +24,7 @@
  * @endcode
  *
  * @see https://www.npmjs.com/package/qs
- * @since 0.1.0
+ * @since 1.0.0
  */
 
 #include <concepts>
@@ -47,7 +47,7 @@ namespace qs {
 
 /**
  * @brief Duplicate key handling strategy during parsing.
- * @since 0.1.0
+ * @since 1.0.0
  */
 enum class Duplicates {
     combine, ///< Combine duplicate keys into an array (default).
@@ -57,7 +57,7 @@ enum class Duplicates {
 
 /**
  * @brief Array serialization format for stringify.
- * @since 0.1.0
+ * @since 1.0.0
  */
 enum class ArrayFormat {
     indices,  ///< `a[0]=b&a[1]=c` (default).
@@ -68,7 +68,7 @@ enum class ArrayFormat {
 
 /**
  * @brief URI encoding format.
- * @since 0.1.0
+ * @since 1.0.0
  */
 enum class Format {
     RFC3986, ///< Spaces as `%20` (default).
@@ -77,7 +77,7 @@ enum class Format {
 
 /**
  * @brief Whether an encoder/decoder call is processing a key or value.
- * @since 0.1.0
+ * @since 1.0.0
  */
 enum class ComponentKind {
     key,  ///< Query string key component.
@@ -86,7 +86,7 @@ enum class ComponentKind {
 
 /**
  * @brief Context passed to custom parse decoders.
- * @since 0.1.0
+ * @since 1.0.0
  */
 struct DecodeContext {
     std::string charset = "utf-8";           ///< Effective charset for this parse.
@@ -95,7 +95,7 @@ struct DecodeContext {
 
 /**
  * @brief Context passed to custom stringify encoders.
- * @since 0.1.0
+ * @since 1.0.0
  */
 struct EncodeContext {
     std::string charset = "utf-8";           ///< Charset requested by stringify.
@@ -129,7 +129,7 @@ using DateSerializer = std::function<JsonValue(const Date&)>;
  * JavaScript prototype behavior that is not present in `JsonValue`.
  *
  * @see https://github.com/ljharb/qs#parsing
- * @since 0.1.0
+ * @since 1.0.0
  */
 struct ParseOptions {
     bool allowDots = false;          ///< Enable dot notation: `a.b=c` -> `{a:{b:"c"}}`.
@@ -160,7 +160,7 @@ struct ParseOptions {
  * `JsonValue`. Date/Buffer-style objects can be adapted with `toQsValue()`.
  *
  * @see https://github.com/ljharb/qs#stringifying
- * @since 0.1.0
+ * @since 1.0.0
  */
 struct StringifyOptions {
     bool addQueryPrefix = false;         ///< Prepend `?` to output.
@@ -258,7 +258,7 @@ inline JsonValue toQsValue(const T& value) {
  * @endcode
  *
  * @see https://github.com/ljharb/qs#parsing
- * @since 0.1.0
+ * @since 1.0.0
  */
 JsonValue parse(const std::string& str, const ParseOptions& opts = {});
 
@@ -292,7 +292,7 @@ JsonValue parse(const std::string& str, const ParseOptions& opts = {});
  * @endcode
  *
  * @see https://github.com/ljharb/qs#stringifying
- * @since 0.1.0
+ * @since 1.0.0
  */
 std::string stringify(const JsonValue& obj, const StringifyOptions& opts = {});
 

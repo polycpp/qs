@@ -3,7 +3,7 @@
 /**
  * @file qs/detail/utils.hpp
  * @brief Internal utility functions for percent-encoding/decoding and merging.
- * @since 0.1.0
+ * @since 1.0.0
  */
 
 #include <string>
@@ -149,7 +149,7 @@ inline std::string interpretNumericEntities(const std::string& str) {
  * @param str The input string to encode.
  * @param format The URI format (RFC3986 uses %20 for spaces, RFC1738 uses +).
  * @return The percent-encoded string.
- * @since 0.1.0
+ * @since 1.0.0
  */
 inline std::string encode(const std::string& str, Format format = Format::RFC3986) {
     static const char hexChars[] = "0123456789ABCDEF";
@@ -182,7 +182,7 @@ inline std::string encode(const std::string& str, Format format = Format::RFC398
  *
  * @param str The percent-encoded string.
  * @return The decoded string.
- * @since 0.1.0
+ * @since 1.0.0
  */
 inline std::string decode(const std::string& str) {
     std::string result;
@@ -213,7 +213,7 @@ inline std::string decode(const std::string& str) {
  * @param delim The delimiter string.
  * @param limit Maximum number of parts (0 = unlimited).
  * @return Vector of split parts.
- * @since 0.1.0
+ * @since 1.0.0
  */
 inline std::vector<std::string> split(const std::string& str,
                                        const std::string& delim,
@@ -254,7 +254,7 @@ inline std::vector<std::string> split(const std::string& str,
  * @param target The target value.
  * @param source The source value to merge in.
  * @return The merged result.
- * @since 0.1.0
+ * @since 1.0.0
  */
 inline JsonValue merge(const JsonValue& target, const JsonValue& source) {
     // If source is null, return target as-is
@@ -372,7 +372,7 @@ inline JsonValue merge(const JsonValue& target, const JsonValue& source) {
  *
  * @param value The value to compact.
  * @return The compacted value.
- * @since 0.1.0
+ * @since 1.0.0
  */
 inline JsonValue compact(const JsonValue& value) {
     if (!value.isObject() && !value.isArray()) {
@@ -420,7 +420,7 @@ inline JsonValue compact(const JsonValue& value) {
  * @param target Existing value.
  * @param source New value to combine.
  * @return Combined value (always an array).
- * @since 0.1.0
+ * @since 1.0.0
  */
 inline JsonValue combine(const JsonValue& target, const JsonValue& source) {
     if (target.isArray()) {

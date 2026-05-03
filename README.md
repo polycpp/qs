@@ -4,7 +4,7 @@ C++ port of [npm qs](https://github.com/ljharb/qs) for [polycpp](https://github.
 
 A query string parsing and stringifying library with support for nested objects, arrays, and configurable encoding/decoding.
 
-Port version: `0.1.0`
+Port version: `1.0.0`
 Initial port based on upstream version: `6.15.1`
 
 ## Prerequisites

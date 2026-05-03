@@ -1,7 +1,7 @@
 /**
  * @file qs.cpp
  * @brief Compiled translation unit for polycpp::qs.
- * @since 0.1.0
+ * @since 1.0.0
  */
 
 #include <polycpp/qs/detail/aggregator.hpp>

@@ -3,7 +3,7 @@
 /**
  * @file qs/detail/parse.hpp
  * @brief Implementation of query string parsing (qs::parse).
- * @since 0.1.0
+ * @since 1.0.0
  */
 
 #include <string>
@@ -108,7 +108,7 @@ inline void interpretNumericEntitiesInPlace(JsonValue& value) {
  * @param opts Parse options (depth, allowDots, etc.).
  * @return Vector of key segments.
  * @throws polycpp::RangeError If strictDepth is true and depth is exceeded.
- * @since 0.1.0
+ * @since 1.0.0
  */
 inline std::vector<std::string> splitKeyIntoSegments(
     const std::string& key, const ParseOptions& opts)
@@ -221,7 +221,7 @@ inline std::vector<std::string> splitKeyIntoSegments(
  * @param val The value to nest.
  * @param opts Parse options.
  * @return The nested JsonValue structure.
- * @since 0.1.0
+ * @since 1.0.0
  */
 inline JsonValue parseObject(
     const std::vector<std::string>& chain,
@@ -319,7 +319,7 @@ inline JsonValue parseObject(
  * @param opts Parse options.
  * @return A JsonObject with flat (un-nested) key-value pairs.
  * @throws polycpp::RangeError If throwOnLimitExceeded and limits exceeded.
- * @since 0.1.0
+ * @since 1.0.0
  */
 inline JsonObject parseValues(const std::string& str, const ParseOptions& opts) {
     JsonObject result;
@@ -515,7 +515,7 @@ inline JsonObject parseValues(const std::string& str, const ParseOptions& opts) 
 
 /**
  * @brief Full parse implementation: parseValues -> parseKeys -> merge -> compact.
- * @since 0.1.0
+ * @since 1.0.0
  */
 inline JsonValue parseImpl(const std::string& str, const ParseOptions& opts) {
     if (str.empty()) {

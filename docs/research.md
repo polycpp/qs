@@ -200,7 +200,7 @@ Top-level runtime and validation layout:
 
 ## v0 scope
 
-- port version: 0.1.0
+- port version: 1.0.0
 - versioning note: port version is independent from upstream versioning
 - supported APIs: `polycpp::qs::parse`, `polycpp::qs::stringify`, `ParseOptions`, `StringifyOptions`, `Duplicates`, `ArrayFormat`, and `Format`.
 - unsupported APIs: Symbol/BigInt/function/undefined value handling, CommonJS/browser package artifacts, and `qs.formats` object identity.

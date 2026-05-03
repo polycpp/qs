@@ -3,7 +3,7 @@
 /**
  * @file qs/detail/stringify.hpp
  * @brief Implementation of query string stringification (qs::stringify).
- * @since 0.1.0
+ * @since 1.0.0
  */
 
 #include <algorithm>
@@ -27,7 +27,7 @@ namespace detail {
  * @param opts The stringify options.
  * @param isKey Whether this is a key (controls encodeValuesOnly behavior).
  * @return The encoded string.
- * @since 0.1.0
+ * @since 1.0.0
  */
 inline std::string encodeComponent(const std::string& str,
                                     const StringifyOptions& opts,
@@ -99,7 +99,7 @@ inline std::vector<size_t> arrayIndices(const JsonArray& arr, const StringifyOpt
  * @param key The array index or empty string.
  * @param format The array format.
  * @return The formatted prefix.
- * @since 0.1.0
+ * @since 1.0.0
  */
 inline std::string generateArrayPrefix(const std::string& prefix,
                                         const std::string& key,
@@ -128,7 +128,7 @@ inline std::string generateArrayPrefix(const std::string& prefix,
  * @param opts The stringify options.
  * @param visited Set of visited object pointers for cycle detection.
  * @param results Output vector of key=value strings.
- * @since 0.1.0
+ * @since 1.0.0
  */
 inline void stringifyRecursive(
     const JsonValue& input,
@@ -311,7 +311,7 @@ inline void stringifyRecursive(
 
 /**
  * @brief Full stringify implementation.
- * @since 0.1.0
+ * @since 1.0.0
  */
 inline std::string stringifyImpl(const JsonValue& obj, const StringifyOptions& opts) {
     JsonValue filteredRoot;
