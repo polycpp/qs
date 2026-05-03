@@ -34,6 +34,9 @@ Match the consumer, not your taste. ``indices`` is the safest default
 because it survives round-tripping through
 :cpp:func:`polycpp::qs::parse` at any ``depth``; ``comma`` is the
 most ambiguous because it conflicts with values that contain commas.
+Comma-format stringify emits scalar array entries only; nested
+``JsonArray`` or ``JsonObject`` elements are skipped rather than coerced
+to JavaScript's ``[object Object]`` text.
 
 For a single-element array under
 :cpp:enumerator:`polycpp::qs::ArrayFormat::comma`, set

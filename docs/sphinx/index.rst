@@ -38,21 +38,22 @@ API actually sees.
    .. grid-item-card:: C++20 native
       :margin: 1
 
-      Header-only where possible, zero-overhead abstractions, ``constexpr``
-      and ``std::string_view`` throughout.
+      A compiled CMake target with a small public header, typed option
+      structs, and ``std::string``/``JsonValue`` interop throughout.
 
    .. grid-item-card:: Tested
       :margin: 1
 
-      72 tests ported from the npm qs suite, covering empty keys,
+      92 compatibility tests adapted from npm qs behavior, covering empty keys,
       ``decodeDotInKeys`` round-trips, ISO-8859-1 charsets, and every
       ``ArrayFormat`` (indices, brackets, repeat, comma).
 
    .. grid-item-card:: Plays well with polycpp
       :margin: 1
 
-      Uses the same JSON value, error, and typed-event types as the rest of
-      the polycpp ecosystem — no impedance mismatch.
+      Uses the same JSON value and error types as the rest of the polycpp
+      ecosystem, so downstream companions such as Express can reuse it
+      directly.
 
 Getting started
 ---------------

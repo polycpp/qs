@@ -48,6 +48,10 @@ Build options
     Build the GoogleTest suite. Defaults to ``ON`` for standalone builds and
     ``OFF`` when consumed via FetchContent.
 
+``POLYCPP_QS_BUILD_EXAMPLES``
+    Build the runnable example programs under ``examples/``. Defaults to
+    ``OFF``.
+
 ``POLYCPP_IO``
     ``asio`` (default) or ``libuv`` — inherited from polycpp.
 

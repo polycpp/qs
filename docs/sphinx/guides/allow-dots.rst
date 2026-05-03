@@ -35,7 +35,11 @@ parser that. Set both
 :cpp:member:`polycpp::qs::ParseOptions::decodeDotInKeys` on parse
 and
 :cpp:member:`polycpp::qs::StringifyOptions::encodeDotInKeys` on
-stringify; the pair round-trips ``first%2Elast`` safely.
+stringify. With normal key encoding enabled, nested in-key dots are
+emitted as ``%252E`` so the parser decodes them once to ``%2E`` and then
+restores the literal dot inside the key. With ``encode = false`` or
+``encodeValuesOnly = true``, stringify emits ``%2E`` instead; parsing
+that form treats the dot as a nesting separator.
 
 Don't mix the two modes inside one protocol — either you're using
 dots as nesting or you're using them as literal key characters.

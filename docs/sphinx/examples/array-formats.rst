@@ -14,6 +14,8 @@ Sample run:
 
 .. code-block:: bash
 
+   cmake -B build -G Ninja -DPOLYCPP_QS_BUILD_EXAMPLES=ON
+   cmake --build build --target polycpp_qs_example_array_formats
    ./build/examples/array_formats
 
 Expected output:

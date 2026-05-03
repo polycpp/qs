@@ -266,11 +266,12 @@ inline std::string stringifyImpl(const JsonValue& obj, const StringifyOptions& o
     }
 
     // Post-process encodeDotInKeys sentinel: \x01 marks in-key dots.
-    // After leaf-level encoding, \x01 becomes %01 (encode=true) or
-    // stays as \x01 (encode=false / encodeValuesOnly). Replace either
-    // form with %2E, but ONLY in the key portion of each key=value
-    // pair to avoid corrupting values that happen to contain \x01.
+    // After leaf-level encoding, \x01 becomes %01 when keys are encoded.
+    // Upstream emits %252E in that mode so parse can decode it once to
+    // in-key %2E text before decodeDotInKeys restores the dot.
+    // Replace only in the key portion to avoid corrupting values.
     if (opts.encodeDotInKeys) {
+        const bool encodedKeys = opts.encode && !opts.encodeValuesOnly;
         for (auto& part : parts) {
             auto eqPos = part.find('=');
             size_t keyEnd = (eqPos != std::string::npos) ? eqPos : part.size();
@@ -282,7 +283,7 @@ inline std::string stringifyImpl(const JsonValue& obj, const StringifyOptions& o
                 } else if (i + 2 < keyEnd &&
                            part[i] == '%' && part[i+1] == '0' &&
                            part[i+2] == '1') {
-                    fixed += "%2E";
+                    fixed += encodedKeys ? "%252E" : "%2E";
                     i += 2;
                 } else {
                     fixed += part[i];

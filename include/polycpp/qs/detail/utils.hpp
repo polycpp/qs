@@ -155,48 +155,6 @@ inline std::string decode(const std::string& str) {
 }
 
 /**
- * @brief Percent-decode a string, preserving %2E (encoded dot).
- *
- * Used when decodeDotInKeys is enabled: %2E must survive decoding so
- * that splitKeyIntoSegments can distinguish separator dots from in-key
- * dots after dot-splitting.
- *
- * @param str The percent-encoded string.
- * @return The decoded string with %2E sequences preserved.
- * @since 0.1.0
- */
-inline std::string decodePreserveDot(const std::string& str) {
-    std::string result;
-    result.reserve(str.size());
-
-    for (size_t i = 0; i < str.size(); ++i) {
-        if (str[i] == '%' && i + 2 < str.size()) {
-            // Preserve %2E / %2e
-            if (str[i+1] == '2' && (str[i+2] == 'E' || str[i+2] == 'e')) {
-                result += '%';
-                result += str[i+1];
-                result += str[i+2];
-                i += 2;
-                continue;
-            }
-            int hi = hexVal(str[i + 1]);
-            int lo = hexVal(str[i + 2]);
-            if (hi >= 0 && lo >= 0) {
-                result += static_cast<char>((hi << 4) | lo);
-                i += 2;
-                continue;
-            }
-        }
-        if (str[i] == '+') {
-            result += ' ';
-        } else {
-            result += str[i];
-        }
-    }
-    return result;
-}
-
-/**
  * @brief Split a string by a single-character or multi-character delimiter.
  * @param str The string to split.
  * @param delim The delimiter string.

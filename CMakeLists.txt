@@ -31,13 +31,36 @@ target_include_directories(polycpp_qs PUBLIC
 # Alias for consistent naming
 add_library(polycpp::qs ALIAS polycpp_qs)
 
+# Examples
+option(POLYCPP_QS_BUILD_EXAMPLES "Build examples" OFF)
+if(POLYCPP_QS_BUILD_EXAMPLES)
+    add_executable(polycpp_qs_example_parse_roundtrip examples/parse_roundtrip.cpp)
+    target_link_libraries(polycpp_qs_example_parse_roundtrip PRIVATE polycpp_qs)
+    set_target_properties(polycpp_qs_example_parse_roundtrip PROPERTIES
+        OUTPUT_NAME parse_roundtrip
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/examples
+    )
+
+    add_executable(polycpp_qs_example_array_formats examples/array_formats.cpp)
+    target_link_libraries(polycpp_qs_example_array_formats PRIVATE polycpp_qs)
+    set_target_properties(polycpp_qs_example_array_formats PROPERTIES
+        OUTPUT_NAME array_formats
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/examples
+    )
+endif()
+
 # Tests
-option(POLYCPP_QS_BUILD_TESTS "Build tests" ON)
+if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
+    set(POLYCPP_QS_BUILD_TESTS_DEFAULT ON)
+else()
+    set(POLYCPP_QS_BUILD_TESTS_DEFAULT OFF)
+endif()
+option(POLYCPP_QS_BUILD_TESTS "Build tests" ${POLYCPP_QS_BUILD_TESTS_DEFAULT})
 if(POLYCPP_QS_BUILD_TESTS)
     enable_testing()
     FetchContent_Declare(
         googletest
-        GIT_REPOSITORY git@github.com:google/googletest.git
+        GIT_REPOSITORY https://github.com/google/googletest.git
         GIT_TAG        v1.15.2
     )
     FetchContent_MakeAvailable(googletest)

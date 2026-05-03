@@ -81,10 +81,10 @@ struct ParseOptions {
     bool allowDots = false;          ///< Enable dot notation: `a.b=c` -> `{a:{b:"c"}}`.
     bool allowEmptyArrays = false;   ///< `foo[]` with no value -> `{foo:[]}`.
     bool allowSparse = false;        ///< Preserve sparse arrays (skip compaction).
-    int arrayLimit = 20;             ///< Max array index; beyond this, arrays become objects.
+    int arrayLimit = 20;             ///< Max array length; index >= this becomes an object key.
     std::string charset = "utf-8";   ///< `"utf-8"` or `"iso-8859-1"`.
     bool comma = false;              ///< Split values on commas: `a=1,2` -> `{a:["1","2"]}`.
-    bool decodeDotInKeys = false;    ///< Decode `%2E` as `.` in keys (implies allowDots).
+    bool decodeDotInKeys = false;    ///< Preserve double-encoded in-key dots; implies allowDots.
     std::string delimiter = "&";     ///< Key-value pair separator.
     int depth = 5;                   ///< Max nesting depth for bracket/dot parsing.
     Duplicates duplicates = Duplicates::combine; ///< Handling for duplicate keys.
@@ -115,7 +115,7 @@ struct StringifyOptions {
     bool commaRoundTrip = false;         ///< With comma format, emit `a[]=c` for single-element arrays.
     std::string delimiter = "&";         ///< Key-value pair separator.
     bool encode = true;                  ///< Enable percent-encoding.
-    bool encodeDotInKeys = false;        ///< Encode dots as `%2E` in keys (implies allowDots).
+    bool encodeDotInKeys = false;        ///< Encode nested in-key dots for decodeDotInKeys round-trips.
     bool encodeValuesOnly = false;       ///< Only encode values, leave keys as-is.
     Format format = Format::RFC3986;     ///< URI encoding format.
     bool skipNulls = false;              ///< Omit keys with null values.

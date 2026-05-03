@@ -163,6 +163,22 @@ TEST(QsParseTest, ArrayLimitExceededBecomesObject) {
     EXPECT_EQ(result["a"]["5"].asString(), "b");
 }
 
+TEST(QsParseTest, ArrayLimitEqualIndexBecomesObject) {
+    ParseOptions opts;
+    opts.arrayLimit = 2;
+    auto result = parse("a[2]=b", opts);
+    // Upstream treats index == arrayLimit as overflow.
+    EXPECT_TRUE(result["a"].isObject());
+    EXPECT_EQ(result["a"]["2"].asString(), "b");
+}
+
+TEST(QsParseTest, ArrayLimitEqualIndexThrowsWhenRequested) {
+    ParseOptions opts;
+    opts.arrayLimit = 2;
+    opts.throwOnLimitExceeded = true;
+    EXPECT_THROW(parse("a[2]=b", opts), RangeError);
+}
+
 TEST(QsParseTest, ParseArraysFalse) {
     ParseOptions opts;
     opts.parseArrays = false;
@@ -194,6 +210,45 @@ TEST(QsParseTest, CommaSplitting) {
     EXPECT_EQ(arr[0].asString(), "1");
     EXPECT_EQ(arr[1].asString(), "2");
     EXPECT_EQ(arr[2].asString(), "3");
+}
+
+TEST(QsParseTest, CommaSplittingAtArrayLimitStaysArray) {
+    ParseOptions opts;
+    opts.comma = true;
+    opts.arrayLimit = 2;
+    auto result = parse("a=1,2", opts);
+    EXPECT_TRUE(result["a"].isArray());
+    const auto& arr = result["a"].asArray();
+    EXPECT_EQ(arr.size(), 2u);
+    EXPECT_EQ(arr[0].asString(), "1");
+    EXPECT_EQ(arr[1].asString(), "2");
+}
+
+TEST(QsParseTest, CommaSplittingOverArrayLimitBecomesObject) {
+    ParseOptions opts;
+    opts.comma = true;
+    opts.arrayLimit = 2;
+    auto result = parse("a=1,2,3", opts);
+    EXPECT_TRUE(result["a"].isObject());
+    EXPECT_EQ(result["a"]["0"].asString(), "1");
+    EXPECT_EQ(result["a"]["1"].asString(), "2");
+    EXPECT_EQ(result["a"]["2"].asString(), "3");
+}
+
+TEST(QsParseTest, CommaSplittingOverArrayLimitThrowsWhenRequested) {
+    ParseOptions opts;
+    opts.comma = true;
+    opts.arrayLimit = 2;
+    opts.throwOnLimitExceeded = true;
+    EXPECT_THROW(parse("a=1,2,3", opts), RangeError);
+}
+
+TEST(QsParseTest, CommaSplittingDuplicateOverArrayLimitThrowsWhenRequested) {
+    ParseOptions opts;
+    opts.comma = true;
+    opts.arrayLimit = 2;
+    opts.throwOnLimitExceeded = true;
+    EXPECT_THROW(parse("a=1,2&a=3", opts), RangeError);
 }
 
 TEST(QsParseTest, CommaSplittingDisabledByDefault) {
@@ -277,6 +332,20 @@ TEST(QsParseTest, ThrowOnLimitExceeded) {
     opts.parameterLimit = 2;
     opts.throwOnLimitExceeded = true;
     EXPECT_THROW(parse("a=1&b=2&c=3", opts), RangeError);
+}
+
+TEST(QsParseTest, DuplicateKeysThrowWhenArrayLimitExceeded) {
+    ParseOptions opts;
+    opts.arrayLimit = 2;
+    opts.throwOnLimitExceeded = true;
+    EXPECT_THROW(parse("a=b&a=c&a=d", opts), RangeError);
+}
+
+TEST(QsParseTest, EmptyBracketDuplicatesThrowWhenArrayLimitExceeded) {
+    ParseOptions opts;
+    opts.arrayLimit = 2;
+    opts.throwOnLimitExceeded = true;
+    EXPECT_THROW(parse("a[]=b&a[]=c&a[]=d", opts), RangeError);
 }
 
 // ============================================================================
@@ -650,7 +719,7 @@ TEST(QsEdgeCaseTest, CommaRoundTrip) {
 // ============================================================================
 
 TEST(QsStringifyTest, EncodeDotInKeysBasic) {
-    // Keys containing dots should have them encoded as %2E (not %252E)
+    // With encode=false, in-key dots are emitted as a single %2E sequence.
     JsonValue obj = JsonObject{
         {"a", JsonObject{{"b.c", "d"}}}
     };
@@ -663,7 +732,6 @@ TEST(QsStringifyTest, EncodeDotInKeysBasic) {
 }
 
 TEST(QsStringifyTest, EncodeDotInKeysWithEncodeEnabled) {
-    // Dots must become %2E, not double-encoded to %252E
     JsonValue obj = JsonObject{
         {"a", JsonObject{{"b.c", "d e"}}}
     };
@@ -672,13 +740,12 @@ TEST(QsStringifyTest, EncodeDotInKeysWithEncodeEnabled) {
     opts.encodeDotInKeys = true;
     // encode defaults to true
     auto result = stringify(obj, opts);
-    // Key dot -> %2E, value space -> %20, bracket chars from key encoding
-    EXPECT_NE(result.find("%2E"), std::string::npos) << "dot should be %2E";
-    EXPECT_EQ(result.find("%252E"), std::string::npos) << "must not double-encode";
+    EXPECT_EQ(result, "a.b%252Ec=d%20e");
 }
 
-TEST(QsStringifyTest, EncodeDotInKeysRoundTrip) {
-    // Stringify with encodeDotInKeys produces %2E for in-key dots
+TEST(QsStringifyTest, EncodeDotInKeysEncodeFalseSingleEncodedDotsNestOnParse) {
+    // With encode=false, upstream emits a single-encoded dot. Parsing it with
+    // decodeDotInKeys treats that dot as a nesting separator.
     JsonValue obj = JsonObject{
         {"a", JsonObject{{"b.c", "d"}}}
     };
@@ -689,8 +756,6 @@ TEST(QsStringifyTest, EncodeDotInKeysRoundTrip) {
     auto str = stringify(obj, sopts);
     EXPECT_EQ(str, "a.b%2Ec=d") << "stringify should produce a.b%2Ec=d";
 
-    // Parse with decodeDotInKeys: %2E is decoded to . BEFORE dot-splitting,
-    // so a.b%2Ec becomes a.b.c (three nesting levels). This matches npm qs.
     ParseOptions popts;
     popts.allowDots = true;
     popts.decodeDotInKeys = true;
@@ -701,6 +766,35 @@ TEST(QsStringifyTest, EncodeDotInKeysRoundTrip) {
     EXPECT_TRUE(parsed["a"].hasKey("b")) << "a should have key 'b'";
     EXPECT_TRUE(parsed["a"]["b"].isObject()) << "a.b should be an object";
     EXPECT_EQ(parsed["a"]["b"]["c"].asString(), "d");
+}
+
+TEST(QsStringifyTest, EncodeDotInKeysDefaultRoundTripsInKeyDot) {
+    JsonValue obj = JsonObject{
+        {"a", JsonObject{{"b.c", "d e"}}}
+    };
+    StringifyOptions sopts;
+    sopts.allowDots = true;
+    sopts.encodeDotInKeys = true;
+
+    auto str = stringify(obj, sopts);
+    EXPECT_EQ(str, "a.b%252Ec=d%20e");
+
+    ParseOptions popts;
+    popts.decodeDotInKeys = true;
+    auto parsed = parse(str, popts);
+    EXPECT_TRUE(parsed["a"].isObject());
+    EXPECT_TRUE(parsed["a"].hasKey("b.c"));
+    EXPECT_EQ(parsed["a"]["b.c"].asString(), "d e");
+}
+
+TEST(QsParseTest, DecodeDotInKeysPreservesDoubleEncodedDotInKey) {
+    ParseOptions opts;
+    opts.decodeDotInKeys = true;
+    auto result = parse("name%252Eobj.first=John&name%252Eobj.last=Doe", opts);
+    EXPECT_TRUE(result.hasKey("name.obj"));
+    EXPECT_TRUE(result["name.obj"].isObject());
+    EXPECT_EQ(result["name.obj"]["first"].asString(), "John");
+    EXPECT_EQ(result["name.obj"]["last"].asString(), "Doe");
 }
 
 // ============================================================================

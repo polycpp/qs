@@ -13,3 +13,4 @@ specific question.
    allow-dots
    ignore-query-prefix
    guard-against-abuse
+   known-differences

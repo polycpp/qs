@@ -19,6 +19,37 @@ namespace polycpp {
 namespace qs {
 namespace detail {
 
+inline void replaceEncodedDot(std::string& str) {
+    size_t pos = 0;
+    while ((pos = str.find("%2E", pos)) != std::string::npos) {
+        str.replace(pos, 3, ".");
+        ++pos;
+    }
+}
+
+inline size_t combinedArrayLength(const JsonValue& target, const JsonValue& source) {
+    const size_t targetLength = target.isArray() ? target.asArray().size() : 1;
+    const size_t sourceLength = source.isArray() ? source.asArray().size() : 1;
+    return targetLength + sourceLength;
+}
+
+inline void throwIfCombinedArrayLimitExceeded(
+    const JsonValue& target,
+    const JsonValue& source,
+    const ParseOptions& opts)
+{
+    if (!opts.throwOnLimitExceeded) {
+        return;
+    }
+    if (opts.arrayLimit < 0 ||
+        combinedArrayLength(target, source) > static_cast<size_t>(opts.arrayLimit)) {
+        throw RangeError("Array limit exceeded. Only " +
+            std::to_string(opts.arrayLimit) + " element" +
+            (opts.arrayLimit == 1 ? "" : "s") +
+            " allowed in an array.");
+    }
+}
+
 /**
  * @brief Split a key like "a[b][c]" into segments ["a", "[b]", "[c]"].
  *
@@ -36,27 +67,11 @@ inline std::vector<std::string> splitKeyIntoSegments(
 {
     std::string workKey = key;
 
-    // Convert dot notation to bracket notation if enabled.
+    // Convert dot notation to bracket notation if enabled. decodeDotInKeys
+    // implies allowDots, but double-encoded dots (%252E -> %2E) must remain
+    // in-key text until parseObject decodes bracket contents.
     if (opts.allowDots || opts.decodeDotInKeys) {
-        // Step 1: When decodeDotInKeys is true, decode %2E -> . BEFORE
-        // dot-splitting so that encoded dots act as nesting separators.
-        if (opts.decodeDotInKeys) {
-            std::string decoded;
-            decoded.reserve(workKey.size());
-            for (size_t j = 0; j < workKey.size(); ++j) {
-                if (j + 2 < workKey.size() && workKey[j] == '%' &&
-                    workKey[j+1] == '2' &&
-                    (workKey[j+2] == 'E' || workKey[j+2] == 'e')) {
-                    decoded += '.';
-                    j += 2;
-                } else {
-                    decoded += workKey[j];
-                }
-            }
-            workKey = decoded;
-        }
-
-        // Step 2: Convert dot notation to bracket notation: a.b.c -> a[b][c]
+        // Convert dot notation to bracket notation: a.b.c -> a[b][c]
         std::string converted;
         bool first = true;
         size_t i = 0;
@@ -190,6 +205,9 @@ inline JsonValue parseObject(
             if (root.size() >= 2 && root.front() == '[' && root.back() == ']') {
                 cleanRoot = root.substr(1, root.size() - 2);
             }
+            if (opts.decodeDotInKeys) {
+                replaceEncodedDot(cleanRoot);
+            }
 
             // When parseArrays is disabled, empty brackets [] map to key "0"
             // (matches npm qs behavior)
@@ -215,13 +233,13 @@ inline JsonValue parseObject(
                 }
             }
 
-            if (isValidArrayIndex && index <= opts.arrayLimit) {
+            if (isValidArrayIndex && index < opts.arrayLimit) {
                 // Create sparse array (index is within the allowed limit)
                 JsonArray arr;
                 arr.resize(static_cast<size_t>(index) + 1);
                 arr[static_cast<size_t>(index)] = std::move(leaf);
                 leaf = JsonValue(std::move(arr));
-            } else if (isValidArrayIndex && index > opts.arrayLimit) {
+            } else if (isValidArrayIndex) {
                 // Index exceeds array limit
                 if (opts.throwOnLimitExceeded) {
                     throw RangeError("Array limit exceeded. Only " +
@@ -327,12 +345,7 @@ inline JsonObject parseValues(const std::string& str, const ParseOptions& opts) 
         std::string val;
         const bool isLatin1 = (opts.charset == "iso-8859-1");
         if (eqPos == std::string::npos) {
-            // No = sign.  When decodeDotInKeys, preserve %2E in keys
-            // so splitKeyIntoSegments can distinguish separator dots
-            // from encoded in-key dots.
-            key = opts.decodeDotInKeys
-                ? detail::decodePreserveDot(part)
-                : detail::decode(part);
+            key = detail::decode(part);
             if (isLatin1) key = detail::latin1ToUtf8(key);
             if (opts.strictNullHandling) {
                 val = ""; // Will be replaced with null below
@@ -340,9 +353,7 @@ inline JsonObject parseValues(const std::string& str, const ParseOptions& opts) 
                 val = "";
             }
         } else {
-            key = opts.decodeDotInKeys
-                ? detail::decodePreserveDot(part.substr(0, eqPos))
-                : detail::decode(part.substr(0, eqPos));
+            key = detail::decode(part.substr(0, eqPos));
             if (isLatin1) key = detail::latin1ToUtf8(key);
             val = detail::decode(part.substr(eqPos + 1));
             if (isLatin1) val = detail::latin1ToUtf8(val);
@@ -359,22 +370,40 @@ inline JsonObject parseValues(const std::string& str, const ParseOptions& opts) 
             std::string rawVal = part.substr(eqPos + 1);
             if (rawVal.find(',') != std::string::npos) {
                 auto commaParts = detail::split(rawVal, ",", 0);
-                JsonArray arr;
-                for (auto& cp : commaParts) {
-                    arr.push_back(JsonValue(detail::decode(cp)));
+                JsonValue commaValue;
+                if (static_cast<int>(commaParts.size()) > opts.arrayLimit) {
+                    if (opts.throwOnLimitExceeded) {
+                        throw RangeError("Array limit exceeded. Only " +
+                            std::to_string(opts.arrayLimit) + " element" +
+                            (opts.arrayLimit == 1 ? "" : "s") +
+                            " allowed in an array.");
+                    }
+                    JsonObject obj;
+                    for (size_t j = 0; j < commaParts.size(); ++j) {
+                        obj[std::to_string(j)] = JsonValue(detail::decode(commaParts[j]));
+                    }
+                    commaValue = JsonValue(std::move(obj));
+                } else {
+                    JsonArray arr;
+                    for (auto& cp : commaParts) {
+                        arr.push_back(JsonValue(detail::decode(cp)));
+                    }
+                    commaValue = JsonValue(std::move(arr));
                 }
-                // Store as array value
+
+                // Store as array or overflow object value
                 auto it = result.find(key);
                 if (it != result.end()) {
                     // Duplicate key with comma: combine
                     if (opts.duplicates == Duplicates::combine) {
-                        it->second = detail::combine(it->second, JsonValue(std::move(arr)));
+                        throwIfCombinedArrayLimitExceeded(it->second, commaValue, opts);
+                        it->second = detail::combine(it->second, commaValue);
                     } else if (opts.duplicates == Duplicates::last) {
-                        it->second = JsonValue(std::move(arr));
+                        it->second = commaValue;
                     }
                     // first: keep existing
                 } else {
-                    result[key] = JsonValue(std::move(arr));
+                    result[key] = commaValue;
                 }
                 continue;
             }
@@ -392,6 +421,7 @@ inline JsonObject parseValues(const std::string& str, const ParseOptions& opts) 
         auto it = result.find(key);
         if (it != result.end()) {
             if (opts.duplicates == Duplicates::combine) {
+                throwIfCombinedArrayLimitExceeded(it->second, value, opts);
                 it->second = detail::combine(it->second, value);
             } else if (opts.duplicates == Duplicates::last) {
                 it->second = value;

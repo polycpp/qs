@@ -34,6 +34,14 @@ network service you want the strict variant. Pick a ``depth`` based
 on the deepest legitimate nesting your API accepts (two or three is
 usually plenty); anything deeper than that is noise or an attack.
 
+``arrayLimit`` is a length cap, matching upstream qs. An indexed key at
+the configured value, such as ``a[100]`` with ``arrayLimit = 100``, is
+already over the cap. Comma-split values use the same cap: ``a=1,2,3``
+stays an array when the limit is at least three, otherwise it becomes an
+overflow object or throws when ``throwOnLimitExceeded`` is enabled.
+Duplicate keys that would combine into an array beyond the cap also
+throw in the strict variant.
+
 Don't try to normalise the error message from ``RangeError::what()``
 into something user-friendly. Log the raw message for your ops team
 and return a generic 400 to the caller.
