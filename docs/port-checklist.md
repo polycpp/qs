@@ -130,10 +130,10 @@ Legend:
 
 ## Public Release
 
-- [ ] production-grade quality confirmed
+- [x] production-grade quality confirmed
 - [x] public documentation ready
 - [x] generated docs placeholder pages replaced with real public documentation
 - [x] public docs do not contain local absolute paths
 - [x] `python3 docs/build.py` passes
 - [x] third-party license notices complete
-- [ ] GitHub repo visibility changed to public
+- [x] GitHub repo visibility changed to public
