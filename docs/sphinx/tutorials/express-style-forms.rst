@@ -40,9 +40,9 @@ empty fields. Build the model without thinking about the wire format:
        };
    }
 
-``qs::stringify`` serialises any ``JsonValue`` — string, number,
-bool, object, or array — so the same helper works for form posts,
-query strings, and URL fragments.
+``qs::stringify`` walks a ``JsonObject`` root whose leaves can be strings,
+numbers, booleans, nulls, nested objects, or arrays, so the same helper works
+for form posts, query strings, and URL fragments.
 
 Step 2 — encode with form-friendly options
 ------------------------------------------

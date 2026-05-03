@@ -4,7 +4,7 @@ qs
 **Nested query string parse and stringify**
 
 Parse URL query strings into nested :cpp:class:`polycpp::JsonValue`
-trees, and serialise them back — with the bracket notation
+trees, and serialize them back - with the bracket notation
 (``a[b][c]=d``), dot notation, comma arrays, and duplicate-key
 handling that plain ``application/x-www-form-urlencoded`` alone never
 covers. A C++20 port of npm qs v6 focused on the shapes every REST
@@ -31,9 +31,9 @@ API actually sees.
       :margin: 1
 
       Two entry points straight from npm qs — ``parse`` and
-      ``stringify`` — taking the same option structs (``allowDots``,
-      ``arrayFormat``, ``duplicates``, ``strictNullHandling``) as the
-      JavaScript original.
+      ``stringify`` — with familiar option names (``allowDots``,
+      ``arrayFormat``, ``duplicates``, ``strictNullHandling``) exposed
+      as typed C++ structs.
 
    .. grid-item-card:: C++20 native
       :margin: 1
@@ -44,7 +44,7 @@ API actually sees.
    .. grid-item-card:: Tested
       :margin: 1
 
-      92 compatibility tests adapted from npm qs behavior, covering empty keys,
+      108 compatibility tests adapted from npm qs behavior, covering empty keys,
       ``decodeDotInKeys`` round-trips, ISO-8859-1 charsets, and every
       ``ArrayFormat`` (indices, brackets, repeat, comma).
 

@@ -1,9 +1,10 @@
 Installation
 ============
 
-qs targets C++20 and builds with clang ≥ 14 or gcc ≥ 11. It depends
-only on the base `polycpp <https://github.com/enricohuang/polycpp>`_ library
-(and none).
+qs targets C++20 and builds with clang ≥ 14 or gcc ≥ 11. It depends on
+the base `polycpp <https://github.com/enricohuang/polycpp>`_ library and
+does not add another runtime dependency. GoogleTest is fetched only when
+the qs test suite is enabled.
 
 CMake FetchContent (recommended)
 --------------------------------

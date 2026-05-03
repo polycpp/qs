@@ -265,12 +265,13 @@ JsonValue parse(const std::string& str, const ParseOptions& opts = {});
 /**
  * @brief Serialize a JsonValue object into a URL query string.
  *
- * Recursively walks the object tree and emits `key=value` pairs joined
+ * Recursively walks a top-level object tree and emits `key=value` pairs joined
  * by the configured delimiter. Nested objects are represented with bracket
  * or dot notation depending on options. Arrays are formatted according to
- * the `arrayFormat` setting.
+ * the `arrayFormat` setting. Non-object roots return an empty string.
  *
- * @param obj The value to stringify (typically a JsonObject).
+ * @param obj The root value to stringify. Object roots are traversed; non-object
+ *        roots return an empty string.
  * @param opts Stringification options.
  * @return The query string (e.g., `"a=1&b%5Bc%5D=2"`).
  *
