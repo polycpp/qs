@@ -71,6 +71,8 @@ Legend:
 ## Scope
 
 - [x] `v0` scope written in `docs/research.md`
+- [x] adapted features listed in `docs/divergences.md`
+- [x] omitted features classified separately from adapted work
 - [x] deferred features listed in `docs/divergences.md`
 - [x] omitted features classified separately from deferred work
 - [x] `polycpp` module dependencies listed

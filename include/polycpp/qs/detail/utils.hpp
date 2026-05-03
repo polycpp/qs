@@ -86,6 +86,59 @@ inline std::string latin1ToUtf8(const std::string& str) {
     return result;
 }
 
+inline void appendCodePointUtf8(std::string& out, uint32_t cp) {
+    if (cp <= 0x7F) {
+        out += static_cast<char>(cp);
+    } else if (cp <= 0x7FF) {
+        out += static_cast<char>(0xC0 | (cp >> 6));
+        out += static_cast<char>(0x80 | (cp & 0x3F));
+    } else if (cp <= 0xFFFF) {
+        out += static_cast<char>(0xE0 | (cp >> 12));
+        out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+        out += static_cast<char>(0x80 | (cp & 0x3F));
+    } else if (cp <= 0x10FFFF) {
+        out += static_cast<char>(0xF0 | (cp >> 18));
+        out += static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
+        out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+        out += static_cast<char>(0x80 | (cp & 0x3F));
+    }
+}
+
+/**
+ * @brief Interpret HTML decimal numeric entities as Unicode text.
+ */
+inline std::string interpretNumericEntities(const std::string& str) {
+    std::string result;
+    result.reserve(str.size());
+
+    for (size_t i = 0; i < str.size(); ++i) {
+        if (str[i] == '&' && i + 3 < str.size() && str[i + 1] == '#') {
+            size_t j = i + 2;
+            uint32_t cp = 0;
+            bool hasDigit = false;
+            while (j < str.size() && str[j] >= '0' && str[j] <= '9') {
+                hasDigit = true;
+                uint32_t digit = static_cast<uint32_t>(str[j] - '0');
+                if (cp <= (0x10FFFFu - digit) / 10u) {
+                    cp = cp * 10u + digit;
+                } else {
+                    hasDigit = false;
+                    break;
+                }
+                ++j;
+            }
+            if (hasDigit && j < str.size() && str[j] == ';') {
+                appendCodePointUtf8(result, cp);
+                i = j;
+                continue;
+            }
+        }
+        result += str[i];
+    }
+
+    return result;
+}
+
 /**
  * @brief Percent-encode a string (UTF-8).
  *

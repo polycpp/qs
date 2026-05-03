@@ -6,7 +6,12 @@
  */
 
 #include <gtest/gtest.h>
+#include <polycpp/buffer.hpp>
+#include <polycpp/core/date.hpp>
 #include <polycpp/qs/qs.hpp>
+
+#include <algorithm>
+#include <cctype>
 
 using namespace polycpp;
 using namespace polycpp::qs;
@@ -361,6 +366,80 @@ TEST(QsParseTest, CustomDelimiter) {
     EXPECT_EQ(result["c"].asString(), "3");
 }
 
+TEST(QsParseTest, CharsetSentinelUtf8OverridesLatin1Default) {
+    ParseOptions opts;
+    opts.charset = "iso-8859-1";
+    opts.charsetSentinel = true;
+    auto result = parse("utf8=%E2%9C%93&%C3%B8=%C3%B8", opts);
+    EXPECT_TRUE(result.hasKey("\xC3\xB8"));
+    EXPECT_EQ(result["\xC3\xB8"].asString(), "\xC3\xB8");
+}
+
+TEST(QsParseTest, CharsetSentinelLatin1OverridesUtf8Default) {
+    ParseOptions opts;
+    opts.charset = "utf-8";
+    opts.charsetSentinel = true;
+    auto result = parse("utf8=%26%2310003%3B&%C3%B8=%C3%B8", opts);
+    EXPECT_TRUE(result.hasKey("\xC3\x83\xC2\xB8"));
+    EXPECT_EQ(result["\xC3\x83\xC2\xB8"].asString(), "\xC3\x83\xC2\xB8");
+}
+
+TEST(QsParseTest, InterpretNumericEntitiesInLatin1Values) {
+    ParseOptions opts;
+    opts.charset = "iso-8859-1";
+    opts.interpretNumericEntities = true;
+    auto result = parse("foo=%26%239786%3B", opts);
+    EXPECT_EQ(result["foo"].asString(), "\xE2\x98\xBA");
+}
+
+TEST(QsParseTest, CustomDecoderCanTransformKeysAndValues) {
+    ParseOptions opts;
+    opts.decoder = [](const std::string& raw, const DecodeContext& ctx) -> JsonValue {
+        JsonValue decoded = defaultDecode(raw, ctx);
+        std::string s = decoded.asString();
+        if (ctx.kind == ComponentKind::key) {
+            std::transform(s.begin(), s.end(), s.begin(),
+                [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        } else {
+            std::transform(s.begin(), s.end(), s.begin(),
+                [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+        }
+        return s;
+    };
+    auto result = parse("KeY=vAlUe", opts);
+    EXPECT_EQ(result["key"].asString(), "VALUE");
+}
+
+TEST(QsParseTest, CustomDecoderCanSkipNullKey) {
+    ParseOptions opts;
+    opts.decoder = [](const std::string& raw, const DecodeContext& ctx) -> JsonValue {
+        if (ctx.kind == ComponentKind::key && raw == "drop") {
+            return nullptr;
+        }
+        return defaultDecode(raw, ctx);
+    };
+    auto result = parse("keep=1&drop=2", opts);
+    EXPECT_TRUE(result.hasKey("keep"));
+    EXPECT_FALSE(result.hasKey("drop"));
+}
+
+TEST(QsParseTest, CustomDecoderCommaValuesOnlySeesParts) {
+    int valueCalls = 0;
+    ParseOptions opts;
+    opts.comma = true;
+    opts.decoder = [&valueCalls](const std::string& raw, const DecodeContext& ctx) -> JsonValue {
+        if (ctx.kind == ComponentKind::value) {
+            ++valueCalls;
+        }
+        return defaultDecode(raw, ctx);
+    };
+    auto result = parse("a=1,2", opts);
+    EXPECT_EQ(valueCalls, 2);
+    EXPECT_TRUE(result["a"].isArray());
+    EXPECT_EQ(result["a"].asArray()[0].asString(), "1");
+    EXPECT_EQ(result["a"].asArray()[1].asString(), "2");
+}
+
 // ============================================================================
 // Parse Tests — Proto Pollution Prevention
 // ============================================================================
@@ -592,6 +671,113 @@ TEST(QsStringifyTest, CustomDelimiter) {
     opts.delimiter = ";";
     auto result = stringify(obj, opts);
     EXPECT_EQ(result, "a=b;c=d");
+}
+
+TEST(QsStringifyTest, CharsetSentinelUtf8) {
+    JsonValue obj = JsonObject{{"a", "\xC3\xA6"}};
+    StringifyOptions opts;
+    opts.charsetSentinel = true;
+    auto result = stringify(obj, opts);
+    EXPECT_EQ(result, "utf8=%E2%9C%93&a=%C3%A6");
+}
+
+TEST(QsStringifyTest, CharsetSentinelLatin1) {
+    JsonValue obj = JsonObject{{"a", "\xC3\xA6"}};
+    StringifyOptions opts;
+    opts.charset = "iso-8859-1";
+    opts.charsetSentinel = true;
+    auto result = stringify(obj, opts);
+    EXPECT_EQ(result, "utf8=%26%2310003%3B&a=%E6");
+}
+
+TEST(QsStringifyTest, DeprecatedIndicesFalseUsesRepeatArrays) {
+    JsonValue obj = JsonObject{
+        {"a", JsonArray{"b", "c"}}
+    };
+    StringifyOptions opts;
+    opts.indices = false;
+    auto result = stringify(obj, opts);
+    EXPECT_EQ(result, "a=b&a=c");
+}
+
+TEST(QsStringifyTest, CustomEncoderCanTransformValues) {
+    JsonValue obj = JsonObject{{"a", "b c"}};
+    StringifyOptions opts;
+    opts.encoder = [](const std::string& value, const EncodeContext& ctx) {
+        if (ctx.kind == ComponentKind::value) {
+            return std::string("x");
+        }
+        return defaultEncode(value, ctx);
+    };
+    auto result = stringify(obj, opts);
+    EXPECT_EQ(result, "a=x");
+}
+
+TEST(QsStringifyTest, CustomFormatterPostProcessesEncodedComponents) {
+    JsonValue obj = JsonObject{{"a", "b"}};
+    StringifyOptions opts;
+    opts.formatter = [](const std::string& value) {
+        return "_" + value + "_";
+    };
+    auto result = stringify(obj, opts);
+    EXPECT_EQ(result, "_a_=_b_");
+}
+
+TEST(QsStringifyTest, FilterCanReplaceAndOmitValues) {
+    JsonValue obj = JsonObject{{"a", "b"}, {"c", "d"}};
+    StringifyOptions opts;
+    opts.filter = [](const std::string& prefix, const JsonValue& value)
+        -> std::optional<JsonValue> {
+        if (prefix == "a") {
+            return JsonValue("z");
+        }
+        if (prefix == "c") {
+            return std::nullopt;
+        }
+        return value;
+    };
+    auto result = stringify(obj, opts);
+    EXPECT_EQ(result, "a=z");
+}
+
+TEST(QsStringifyTest, FilterKeysSelectsProperties) {
+    JsonValue obj = JsonObject{{"a", "1"}, {"b", "2"}, {"c", "3"}};
+    StringifyOptions opts;
+    opts.filterKeys = std::vector<std::string>{"b", "a"};
+    auto result = stringify(obj, opts);
+    EXPECT_EQ(result, "b=2&a=1");
+}
+
+TEST(QsStringifyTest, SortOrdersKeysAtEveryDepth) {
+    JsonValue obj = JsonObject{
+        {"z", JsonObject{{"j", "a"}, {"i", "b"}}},
+        {"a", "c"},
+        {"b", "f"}
+    };
+    StringifyOptions opts;
+    opts.sort = [](const std::string& lhs, const std::string& rhs) {
+        return lhs < rhs;
+    };
+    auto result = stringify(obj, opts);
+    EXPECT_EQ(result, "a=c&b=f&z%5Bi%5D=b&z%5Bj%5D=a");
+}
+
+TEST(QsStringifyTest, DateAdapterUsesSerializeDate) {
+    Date date(6.0);
+    StringifyOptions opts;
+    opts.serializeDate = [](const Date& d) -> JsonValue {
+        return d.getTime() * 7;
+    };
+    JsonValue obj = JsonObject{{"a", toQsValue(date, opts)}};
+    auto result = stringify(obj, opts);
+    EXPECT_EQ(result, "a=42");
+}
+
+TEST(QsStringifyTest, BufferAdapterUsesToString) {
+    auto buffer = Buffer::from("test");
+    JsonValue obj = JsonObject{{"a", toQsValue(buffer)}};
+    auto result = stringify(obj);
+    EXPECT_EQ(result, "a=test");
 }
 
 // ============================================================================

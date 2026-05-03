@@ -82,9 +82,9 @@ See [qs documentation](https://github.com/ljharb/qs) for detailed option descrip
 
 ## Status
 
-Implemented: parse and stringify for `JsonValue` objects; bracket and dot notation; duplicate handling; array formats; depth, parameter, and array limits; null handling; RFC1738/RFC3986 encoding; UTF-8 and ISO-8859-1 charset selection.
+Implemented: parse and stringify for `JsonValue` objects; bracket and dot notation; duplicate handling; array formats; depth, parameter, and array limits; null handling; RFC1738/RFC3986 encoding; UTF-8 and ISO-8859-1 charset handling; charset sentinels; custom decoder/encoder/filter/formatter/sort hooks; deprecated `indices`; and Date/Buffer/toString adapters through `qs::toQsValue()`.
 
-Known differences from upstream: JavaScript callback hooks, Date/Buffer/Symbol/BigInt values, `charsetSentinel`, `interpretNumericEntities`, `plainObjects`, and `allowPrototypes` are not part of the current C++ API. See `docs/sphinx/guides/known-differences.rst` for the public compatibility notes and `docs/divergences.md` for the libgen catch-up audit.
+Known differences from upstream: Symbol, BigInt, function, `undefined`, `plainObjects`, and `allowPrototypes` are not part of the current C++ API. Date and Buffer values are adapted explicitly because `JsonValue` cannot carry arbitrary runtime objects. See `docs/sphinx/guides/known-differences.rst` for the public compatibility notes and `docs/divergences.md` for the libgen catch-up audit.
 
 ## License
 

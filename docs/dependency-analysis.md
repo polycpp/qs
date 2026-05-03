@@ -59,7 +59,7 @@ Analyzer install found `side-channel` with transitive runtime helpers `es-errors
 ### Analyzer porting gates
 
 - polycpp reuse hints consumed: analyzer emitted none; manual reuse selected `JsonValue`, `JsonObject`, `JsonArray`, `RangeError`, and `Number` helpers from base polycpp.
-- Node parity hints consumed: one callback signal came from installed helper dependencies, not from the target package; target qs exposes no callback API.
+- Node parity hints consumed: callback signals were validated against upstream qs source and mapped to typed decoder/encoder/filter/formatter/sort/date-serialization callbacks.
 - security hints consumed: analyzer classified the package as not security-sensitive; manual review still treats parser limits and user-controlled query input as abuse-relevant.
 - security-sensitive package: no for auth/crypto, moderate for parser resource limits.
 - polycpp capability snapshot consumed: `75bc07dfca6ac0aaca07c8748476246e8c18df74` from the local polycpp checkout on 2026-05-03.
@@ -72,13 +72,13 @@ Analyzer install found `side-channel` with transitive runtime helpers `es-errors
 
 ### Node parity surface usage
 
-- callbacks: none in target; dependency-only analyzer callback signal is not exposed.
+- callbacks: custom decoder, encoder, formatter, filter, sort, and date serialization are adapted as typed C++ callbacks.
 - Promise APIs: none.
 - EventEmitter APIs: none.
 - server/listener APIs: none.
 - diagnostic/tracing APIs: none.
 - streams: none.
-- Buffer and binary data: upstream `utils.isBuffer` makes Buffer stringify as a primitive; C++ v0 omits Buffer because `JsonValue` does not carry binary values.
+- Buffer and binary data: upstream `utils.isBuffer` makes Buffer stringify as a primitive; C++ supports this through `qs::toQsValue(buffer)` because `JsonValue` does not carry binary values.
 - URL/timer/process/filesystem APIs: none.
 - crypto/compression/TLS/network/HTTP APIs: none.
 
@@ -98,7 +98,7 @@ Analyzer totals across installed packages included `TypeError`, `Array.prototype
 - Preserve package-specific parser and serializer semantics through private helpers and compatibility tests.
 - Use typed C++ option structs instead of JavaScript option dictionaries and runtime type validation.
 - Keep `JsonValue` as the public data model because query shapes are open and downstream `express` already consumes it.
-- Record unimplemented JavaScript value surfaces and callbacks as deferred or omitted divergences, not as hidden behavior.
+- Record unimplemented JavaScript value surfaces as omitted divergences, not as hidden behavior; callbacks and Date/Buffer adaptation are implemented explicitly.
 
 ## Analyzer warnings
 

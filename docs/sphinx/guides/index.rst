@@ -12,5 +12,6 @@ specific question.
    pick-array-format
    allow-dots
    ignore-query-prefix
+   advanced-parity-options
    guard-against-abuse
    known-differences

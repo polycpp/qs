@@ -27,13 +27,22 @@
  * @since 0.1.0
  */
 
+#include <concepts>
+#include <functional>
+#include <optional>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include <polycpp/core/json.hpp>
 #include <polycpp/core/error.hpp>
 
 namespace polycpp {
+class Date;
+namespace buffer {
+class Buffer;
+}
+
 namespace qs {
 
 /**
@@ -67,12 +76,57 @@ enum class Format {
 };
 
 /**
+ * @brief Whether an encoder/decoder call is processing a key or value.
+ * @since 0.1.0
+ */
+enum class ComponentKind {
+    key,  ///< Query string key component.
+    value ///< Query string value component.
+};
+
+/**
+ * @brief Context passed to custom parse decoders.
+ * @since 0.1.0
+ */
+struct DecodeContext {
+    std::string charset = "utf-8";           ///< Effective charset for this parse.
+    ComponentKind kind = ComponentKind::value; ///< Current component kind.
+};
+
+/**
+ * @brief Context passed to custom stringify encoders.
+ * @since 0.1.0
+ */
+struct EncodeContext {
+    std::string charset = "utf-8";           ///< Charset requested by stringify.
+    ComponentKind kind = ComponentKind::value; ///< Current component kind.
+    Format format = Format::RFC3986;         ///< URI encoding format.
+};
+
+/// @brief Custom parse decoder callback.
+using Decoder = std::function<JsonValue(const std::string&, const DecodeContext&)>;
+
+/// @brief Custom stringify encoder callback.
+using Encoder = std::function<std::string(const std::string&, const EncodeContext&)>;
+
+/// @brief Optional post-encoder formatter callback.
+using Formatter = std::function<std::string(const std::string&)>;
+
+/// @brief Stringify filter/replacer callback; `std::nullopt` omits a value.
+using Filter = std::function<std::optional<JsonValue>(const std::string&, const JsonValue&)>;
+
+/// @brief Object-key comparator used by stringify.
+using Sort = std::function<bool(const std::string&, const std::string&)>;
+
+/// @brief Date serializer used by `toQsValue(Date, opts)`.
+using DateSerializer = std::function<JsonValue(const Date&)>;
+
+/**
  * @brief Options controlling query string parsing behavior.
  *
- * Mirrors the parse options from npm qs. JavaScript-specific options
- * (`allowPrototypes`, `plainObjects`, `charsetSentinel`,
- * `interpretNumericEntities`, custom `decoder`) are omitted because
- * they address JS-only concerns (prototype pollution, dynamic typing).
+ * Mirrors the parse options from npm qs. JavaScript-specific object-shape
+ * options (`allowPrototypes`, `plainObjects`) are omitted because they address
+ * JavaScript prototype behavior that is not present in `JsonValue`.
  *
  * @see https://github.com/ljharb/qs#parsing
  * @since 0.1.0
@@ -83,12 +137,15 @@ struct ParseOptions {
     bool allowSparse = false;        ///< Preserve sparse arrays (skip compaction).
     int arrayLimit = 20;             ///< Max array length; index >= this becomes an object key.
     std::string charset = "utf-8";   ///< `"utf-8"` or `"iso-8859-1"`.
+    bool charsetSentinel = false;    ///< Let an upstream `utf8=` sentinel select the effective charset.
     bool comma = false;              ///< Split values on commas: `a=1,2` -> `{a:["1","2"]}`.
     bool decodeDotInKeys = false;    ///< Preserve double-encoded in-key dots; implies allowDots.
+    Decoder decoder = nullptr;       ///< Optional custom decoder for raw key/value components.
     std::string delimiter = "&";     ///< Key-value pair separator.
     int depth = 5;                   ///< Max nesting depth for bracket/dot parsing.
     Duplicates duplicates = Duplicates::combine; ///< Handling for duplicate keys.
     bool ignoreQueryPrefix = false;  ///< Strip leading `?`.
+    bool interpretNumericEntities = false; ///< Decode `&#NNNN;` in ISO-8859-1 values.
     int parameterLimit = 1000;       ///< Max number of key-value pairs to parse.
     bool parseArrays = true;         ///< Enable array index parsing (`a[0]=b`).
     bool strictDepth = false;        ///< Throw on depth limit exceeded.
@@ -99,9 +156,8 @@ struct ParseOptions {
 /**
  * @brief Options controlling query string serialization behavior.
  *
- * Mirrors the stringify options from npm qs. JavaScript-specific options
- * (custom `encoder`/`filter`/`serializeDate`/`sort`) are omitted for
- * the initial implementation.
+ * Mirrors the stringify options from npm qs for values representable by
+ * `JsonValue`. Date/Buffer-style objects can be adapted with `toQsValue()`.
  *
  * @see https://github.com/ljharb/qs#stringifying
  * @since 0.1.0
@@ -112,15 +168,65 @@ struct StringifyOptions {
     bool allowEmptyArrays = false;       ///< Emit `key[]` for empty arrays.
     ArrayFormat arrayFormat = ArrayFormat::indices; ///< Array serialization format.
     std::string charset = "utf-8";       ///< `"utf-8"` or `"iso-8859-1"`.
+    bool charsetSentinel = false;        ///< Prepend an upstream-compatible `utf8=` charset sentinel.
     bool commaRoundTrip = false;         ///< With comma format, emit `a[]=c` for single-element arrays.
     std::string delimiter = "&";         ///< Key-value pair separator.
     bool encode = true;                  ///< Enable percent-encoding.
     bool encodeDotInKeys = false;        ///< Encode nested in-key dots for decodeDotInKeys round-trips.
+    Encoder encoder = nullptr;           ///< Optional custom encoder for key/value components.
     bool encodeValuesOnly = false;       ///< Only encode values, leave keys as-is.
+    std::optional<bool> indices = std::nullopt; ///< Deprecated qs compatibility: false selects repeat arrays.
+    Filter filter = nullptr;             ///< Optional filter/replacer; nullopt omits the value.
+    std::optional<std::vector<std::string>> filterKeys = std::nullopt; ///< Optional key/index allow-list.
     Format format = Format::RFC3986;     ///< URI encoding format.
+    Formatter formatter = nullptr;       ///< Optional post-encoder formatter.
+    DateSerializer serializeDate = nullptr; ///< Optional serializer used by `toQsValue(Date, opts)`.
     bool skipNulls = false;              ///< Omit keys with null values.
+    Sort sort = nullptr;                 ///< Optional object-key comparator.
     bool strictNullHandling = false;     ///< Emit `key` (no `=`) for null values.
 };
+
+/**
+ * @brief Decode a raw query component using qs defaults.
+ *
+ * Custom decoders can call this helper to match the built-in percent decoding
+ * and charset conversion before applying their own transformation.
+ */
+JsonValue defaultDecode(const std::string& str, const DecodeContext& ctx = {});
+
+/**
+ * @brief Encode a query component using qs defaults.
+ *
+ * Custom encoders can call this helper to reuse built-in percent encoding,
+ * charset conversion, and RFC1738/RFC3986 spacing behavior.
+ */
+std::string defaultEncode(const std::string& str, const EncodeContext& ctx = {});
+
+/**
+ * @brief Adapt a polycpp Date for qs stringification.
+ *
+ * Uses `opts.serializeDate` when provided; otherwise uses Date's ISO string,
+ * matching npm qs Date handling.
+ */
+JsonValue toQsValue(const Date& date, const StringifyOptions& opts = {});
+
+/**
+ * @brief Adapt a polycpp Buffer for qs stringification.
+ *
+ * Buffers stringify as their decoded string contents, matching npm qs Buffer
+ * handling for Node buffers.
+ */
+JsonValue toQsValue(const buffer::Buffer& buffer, const std::string& encoding = "utf8");
+
+// Generic toString adapter; documented in the advanced parity guide.
+/// @cond
+template <typename T>
+requires (!std::same_as<std::decay_t<T>, JsonValue>)
+    && requires(const T& t) { { t.toString() } -> std::convertible_to<std::string>; }
+inline JsonValue toQsValue(const T& value) {
+    return std::string(value.toString());
+}
+/// @endcond
 
 /**
  * @brief Parse a URL query string into a nested JsonValue object.

@@ -2,18 +2,20 @@ Known differences from npm qs
 =============================
 
 polycpp qs follows the supported npm qs parse/stringify behavior, but the
-C++ API is intentionally typed. These surfaces are not present in v0:
+C++ API is intentionally typed. These surfaces differ from JavaScript qs:
 
-- JavaScript callback hooks such as custom parse ``decoder`` and stringify
-  ``encoder``, ``formatter``, ``filter``, ``sort``, and ``serializeDate``.
-- JavaScript-only value types such as Date, Buffer, Symbol, BigInt,
-  functions, and ``undefined``; the C++ surface accepts
-  :cpp:class:`polycpp::JsonValue`.
+- Date, Buffer, and other polycpp objects with ``toString()`` are adapted
+  explicitly with ``qs::toQsValue(...)`` before stringification because
+  :cpp:class:`polycpp::JsonValue` cannot carry arbitrary runtime objects.
+- JavaScript-only value types such as Symbol, BigInt, functions, and
+  ``undefined`` are not represented by :cpp:class:`polycpp::JsonValue`.
 - Runtime object-shape options such as ``plainObjects``,
   ``allowPrototypes``, and ``strictMerge``. ``__proto__`` keys are still
   dropped defensively.
-- Charset sentinel parsing/output and numeric HTML entity interpretation;
-  callers choose the charset directly through the option structs.
+- Callback hooks are typed C++ callbacks. Custom parse ``decoder`` returns a
+  ``JsonValue`` for values or a string/null-like value for keys; stringify
+  ``filter`` uses ``std::optional<JsonValue>`` so ``std::nullopt`` means
+  omit this value.
 
 One stringify edge is deliberately different: comma-format arrays only emit
 scalar ``JsonValue`` entries. Nested arrays or objects inside a comma-format

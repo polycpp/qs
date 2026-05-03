@@ -6,6 +6,8 @@
  * @since 0.1.0
  */
 
+#include <algorithm>
+#include <cstdlib>
 #include <string>
 #include <vector>
 #include <unordered_set>
@@ -30,12 +32,65 @@ namespace detail {
 inline std::string encodeComponent(const std::string& str,
                                     const StringifyOptions& opts,
                                     bool isKey) {
-    if (!opts.encode) return str;
-    if (opts.encodeValuesOnly && isKey) return str;
-    if (opts.charset == "iso-8859-1") {
-        return detail::encode(detail::utf8ToLatin1(str), opts.format);
+    std::string encoded;
+    if (!opts.encode || (opts.encodeValuesOnly && isKey)) {
+        encoded = str;
+    } else {
+        EncodeContext ctx{
+            opts.charset,
+            isKey ? ComponentKind::key : ComponentKind::value,
+            opts.format
+        };
+        encoded = opts.encoder ? opts.encoder(str, ctx) : qs::defaultEncode(str, ctx);
     }
-    return detail::encode(str, opts.format);
+    return opts.formatter ? opts.formatter(encoded) : encoded;
+}
+
+inline ArrayFormat effectiveArrayFormat(const StringifyOptions& opts) {
+    if (opts.indices.has_value() && opts.arrayFormat == ArrayFormat::indices) {
+        return *opts.indices ? ArrayFormat::indices : ArrayFormat::repeat;
+    }
+    return opts.arrayFormat;
+}
+
+inline std::vector<std::string> objectKeys(const JsonObject& obj, const StringifyOptions& opts) {
+    std::vector<std::string> keys;
+    if (opts.filterKeys.has_value()) {
+        for (const auto& key : *opts.filterKeys) {
+            if (obj.find(key) != obj.end()) {
+                keys.push_back(key);
+            }
+        }
+    } else {
+        keys.reserve(obj.size());
+        for (const auto& [key, value] : obj) {
+            (void)value;
+            keys.push_back(key);
+        }
+        if (opts.sort) {
+            std::sort(keys.begin(), keys.end(), opts.sort);
+        }
+    }
+    return keys;
+}
+
+inline std::vector<size_t> arrayIndices(const JsonArray& arr, const StringifyOptions& opts) {
+    std::vector<size_t> indices;
+    if (opts.filterKeys.has_value()) {
+        for (const auto& key : *opts.filterKeys) {
+            char* end = nullptr;
+            unsigned long parsed = std::strtoul(key.c_str(), &end, 10);
+            if (end != key.c_str() && *end == '\0' && parsed < arr.size()) {
+                indices.push_back(static_cast<size_t>(parsed));
+            }
+        }
+    } else {
+        indices.reserve(arr.size());
+        for (size_t i = 0; i < arr.size(); ++i) {
+            indices.push_back(i);
+        }
+    }
+    return indices;
 }
 
 /**
@@ -76,12 +131,24 @@ inline std::string generateArrayPrefix(const std::string& prefix,
  * @since 0.1.0
  */
 inline void stringifyRecursive(
-    const JsonValue& obj,
+    const JsonValue& input,
     const std::string& prefix,
     const StringifyOptions& opts,
     std::unordered_set<const JsonValue*>& visited,
     std::vector<std::string>& results)
 {
+    JsonValue filteredValue;
+    const JsonValue* objPtr = &input;
+    if (opts.filter) {
+        auto filtered = opts.filter(prefix, input);
+        if (!filtered.has_value()) {
+            return;
+        }
+        filteredValue = std::move(*filtered);
+        objPtr = &filteredValue;
+    }
+    const JsonValue& obj = *objPtr;
+
     // Null handling
     if (obj.isNull()) {
         if (opts.skipNulls) return;
@@ -129,6 +196,7 @@ inline void stringifyRecursive(
     // Array handling
     if (obj.isArray()) {
         const auto& arr = obj.asArray();
+        const ArrayFormat arrayFormat = effectiveArrayFormat(opts);
 
         // Empty array handling
         if (arr.empty()) {
@@ -140,7 +208,7 @@ inline void stringifyRecursive(
         }
 
         // Comma format: join all elements with comma
-        if (opts.arrayFormat == ArrayFormat::comma) {
+        if (arrayFormat == ArrayFormat::comma) {
             // For single-element arrays with commaRoundTrip, use bracket notation
             if (arr.size() == 1 && opts.commaRoundTrip) {
                 // Emit as bracket notation for round-trip safety
@@ -155,7 +223,7 @@ inline void stringifyRecursive(
                 if (arr[i].isString()) {
                     if (opts.encodeValuesOnly && opts.encode) {
                         // With encodeValuesOnly, encode each element individually
-                        joined += detail::encode(arr[i].asString(), opts.format);
+                        joined += encodeComponent(arr[i].asString(), opts, false);
                     } else {
                         joined += arr[i].asString();
                     }
@@ -176,9 +244,9 @@ inline void stringifyRecursive(
                 // joined string including commas
                 std::string encodedValue;
                 if (opts.encode && !opts.encodeValuesOnly) {
-                    encodedValue = detail::encode(joined, opts.format);
+                    encodedValue = encodeComponent(joined, opts, false);
                 } else {
-                    encodedValue = joined;
+                    encodedValue = opts.formatter ? opts.formatter(joined) : joined;
                 }
                 results.push_back(
                     encodeComponent(prefix, opts, true) + "=" + encodedValue);
@@ -187,12 +255,12 @@ inline void stringifyRecursive(
         }
 
         // Standard array formats (indices, brackets, repeat)
-        for (size_t i = 0; i < arr.size(); ++i) {
+        for (size_t i : arrayIndices(arr, opts)) {
             const auto& elem = arr[i];
             if (opts.skipNulls && elem.isNull()) continue;
 
             std::string arrayPrefix = generateArrayPrefix(
-                prefix, std::to_string(i), opts.arrayFormat);
+                prefix, std::to_string(i), arrayFormat);
 
             stringifyRecursive(elem, arrayPrefix, opts, visited, results);
         }
@@ -208,7 +276,8 @@ inline void stringifyRecursive(
         visited.insert(&obj);
 
         const auto& map = obj.asObject();
-        for (const auto& [key, val] : map) {
+        for (const auto& key : objectKeys(map, opts)) {
+            const auto& val = map.at(key);
             if (opts.skipNulls && val.isNull()) continue;
 
             // Build the prefix with raw (unencoded) keys.
@@ -245,12 +314,24 @@ inline void stringifyRecursive(
  * @since 0.1.0
  */
 inline std::string stringifyImpl(const JsonValue& obj, const StringifyOptions& opts) {
+    JsonValue filteredRoot;
+    const JsonValue* rootPtr = &obj;
+    if (opts.filter) {
+        auto filtered = opts.filter("", obj);
+        if (!filtered.has_value()) {
+            return "";
+        }
+        filteredRoot = std::move(*filtered);
+        rootPtr = &filteredRoot;
+    }
+    const JsonValue& root = *rootPtr;
+
     // Non-object input -> empty string
-    if (!obj.isObject()) {
+    if (!root.isObject()) {
         return "";
     }
 
-    const auto& map = obj.asObject();
+    const auto& map = root.asObject();
     if (map.empty()) {
         return "";
     }
@@ -258,7 +339,8 @@ inline std::string stringifyImpl(const JsonValue& obj, const StringifyOptions& o
     std::vector<std::string> parts;
     std::unordered_set<const JsonValue*> visited;
 
-    for (const auto& [key, val] : map) {
+    for (const auto& key : objectKeys(map, opts)) {
+        const auto& val = map.at(key);
         if (opts.skipNulls && val.isNull()) continue;
 
         // Pass raw key as prefix; encoding happens at the leaf level.
@@ -301,8 +383,19 @@ inline std::string stringifyImpl(const JsonValue& obj, const StringifyOptions& o
         joined += parts[i];
     }
 
-    if (opts.addQueryPrefix && !joined.empty()) {
-        joined = "?" + joined;
+    if (!joined.empty()) {
+        std::string prefix;
+        if (opts.addQueryPrefix) {
+            prefix += "?";
+        }
+        if (opts.charsetSentinel) {
+            if (opts.charset == "iso-8859-1") {
+                prefix += "utf8=%26%2310003%3B&";
+            } else {
+                prefix += "utf8=%E2%9C%93&";
+            }
+        }
+        joined = prefix + joined;
     }
 
     return joined;

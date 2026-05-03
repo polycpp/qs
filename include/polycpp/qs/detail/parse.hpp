@@ -7,6 +7,7 @@
  */
 
 #include <string>
+#include <optional>
 #include <vector>
 
 #include <polycpp/core/json.hpp>
@@ -47,6 +48,53 @@ inline void throwIfCombinedArrayLimitExceeded(
             std::to_string(opts.arrayLimit) + " element" +
             (opts.arrayLimit == 1 ? "" : "s") +
             " allowed in an array.");
+    }
+}
+
+inline std::optional<std::string> decodedKeyToString(const JsonValue& decoded) {
+    if (decoded.isNull()) {
+        return std::nullopt;
+    }
+    if (decoded.isString()) {
+        return decoded.asString();
+    }
+    if (decoded.isBool()) {
+        return decoded.asBool() ? "true" : "false";
+    }
+    if (decoded.isNumber()) {
+        double num = decoded.asNumber();
+        if (Number::isNaN(num) || !Number::isFinite(num)) {
+            return "";
+        }
+        return Number::toString(num);
+    }
+    return "";
+}
+
+inline JsonValue decodeComponentValue(
+    const std::string& raw,
+    const std::string& charset,
+    ComponentKind kind,
+    const ParseOptions& opts)
+{
+    DecodeContext ctx{charset, kind};
+    return opts.decoder ? opts.decoder(raw, ctx) : qs::defaultDecode(raw, ctx);
+}
+
+inline void interpretNumericEntitiesInPlace(JsonValue& value) {
+    if (value.isString()) {
+        value = JsonValue(detail::interpretNumericEntities(value.asString()));
+    } else if (value.isArray()) {
+        auto& arr = value.asArray();
+        for (auto& elem : arr) {
+            interpretNumericEntitiesInPlace(elem);
+        }
+    } else if (value.isObject()) {
+        auto& obj = value.asObject();
+        for (auto& [key, val] : obj) {
+            (void)key;
+            interpretNumericEntitiesInPlace(val);
+        }
     }
 }
 
@@ -319,7 +367,28 @@ inline JsonObject parseValues(const std::string& str, const ParseOptions& opts) 
             (opts.parameterLimit == 1 ? "" : "s") + " allowed.");
     }
 
+    constexpr const char* utf8Sentinel = "utf8=%E2%9C%93";
+    constexpr const char* isoSentinel = "utf8=%26%2310003%3B";
+    int skipIndex = -1;
+    std::string charset = opts.charset;
+    if (opts.charsetSentinel) {
+        for (size_t i = 0; i < parts.size(); ++i) {
+            if (parts[i].rfind("utf8=", 0) == 0) {
+                if (parts[i] == utf8Sentinel) {
+                    charset = "utf-8";
+                } else if (parts[i] == isoSentinel) {
+                    charset = "iso-8859-1";
+                }
+                skipIndex = static_cast<int>(i);
+                break;
+            }
+        }
+    }
+
     for (size_t i = 0; i < parts.size(); ++i) {
+        if (static_cast<int>(i) == skipIndex) {
+            continue;
+        }
         const auto& part = parts[i];
         if (part.empty()) continue;
 
@@ -341,25 +410,24 @@ inline JsonObject parseValues(const std::string& str, const ParseOptions& opts) 
             }
         }
 
-        std::string key;
-        std::string val;
-        const bool isLatin1 = (opts.charset == "iso-8859-1");
+        std::optional<std::string> keyOpt;
+        JsonValue value;
         if (eqPos == std::string::npos) {
-            key = detail::decode(part);
-            if (isLatin1) key = detail::latin1ToUtf8(key);
+            keyOpt = decodedKeyToString(
+                decodeComponentValue(part, charset, ComponentKind::key, opts));
             if (opts.strictNullHandling) {
-                val = ""; // Will be replaced with null below
+                value = JsonValue(nullptr);
             } else {
-                val = "";
+                value = JsonValue("");
             }
         } else {
-            key = detail::decode(part.substr(0, eqPos));
-            if (isLatin1) key = detail::latin1ToUtf8(key);
-            val = detail::decode(part.substr(eqPos + 1));
-            if (isLatin1) val = detail::latin1ToUtf8(val);
+            keyOpt = decodedKeyToString(
+                decodeComponentValue(part.substr(0, eqPos), charset, ComponentKind::key, opts));
         }
 
         // Skip empty keys (matches npm qs behavior: empty keys are dropped)
+        if (!keyOpt.has_value()) continue;
+        std::string key = *keyOpt;
         if (key.empty()) continue;
 
         // Handle comma splitting — split on literal commas in the RAW
@@ -380,13 +448,23 @@ inline JsonObject parseValues(const std::string& str, const ParseOptions& opts) 
                     }
                     JsonObject obj;
                     for (size_t j = 0; j < commaParts.size(); ++j) {
-                        obj[std::to_string(j)] = JsonValue(detail::decode(commaParts[j]));
+                        JsonValue item = decodeComponentValue(
+                            commaParts[j], charset, ComponentKind::value, opts);
+                        if (opts.interpretNumericEntities && charset == "iso-8859-1") {
+                            interpretNumericEntitiesInPlace(item);
+                        }
+                        obj[std::to_string(j)] = std::move(item);
                     }
                     commaValue = JsonValue(std::move(obj));
                 } else {
                     JsonArray arr;
                     for (auto& cp : commaParts) {
-                        arr.push_back(JsonValue(detail::decode(cp)));
+                        JsonValue item = decodeComponentValue(
+                            cp, charset, ComponentKind::value, opts);
+                        if (opts.interpretNumericEntities && charset == "iso-8859-1") {
+                            interpretNumericEntitiesInPlace(item);
+                        }
+                        arr.push_back(std::move(item));
                     }
                     commaValue = JsonValue(std::move(arr));
                 }
@@ -409,12 +487,12 @@ inline JsonObject parseValues(const std::string& str, const ParseOptions& opts) 
             }
         }
 
-        // Create the value
-        JsonValue value;
-        if (eqPos == std::string::npos && opts.strictNullHandling) {
-            value = JsonValue(nullptr);
-        } else {
-            value = JsonValue(val);
+        if (eqPos != std::string::npos) {
+            value = decodeComponentValue(
+                part.substr(eqPos + 1), charset, ComponentKind::value, opts);
+            if (opts.interpretNumericEntities && charset == "iso-8859-1") {
+                interpretNumericEntitiesInPlace(value);
+            }
         }
 
         // Handle duplicates

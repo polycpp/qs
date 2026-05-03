@@ -2,8 +2,8 @@
 
 ## Unit tests
 
-- `tests/test_qs.cpp` currently contains 92 GoogleTest cases covering basic parse/stringify behavior, nested objects, arrays, sparse compaction, duplicate keys, parameter limits, delimiters, null handling, numbers, booleans, encoding, dot notation, charsets, and round trips.
-- Focused audit tests cover `arrayLimit` equality, comma-array limit overflow, duplicate implicit-array limit throws, double-encoded `decodeDotInKeys`, and default encoded `encodeDotInKeys` round-trips.
+- `tests/test_qs.cpp` currently contains 108 GoogleTest cases covering basic parse/stringify behavior, nested objects, arrays, sparse compaction, duplicate keys, parameter limits, delimiters, null handling, numbers, booleans, encoding, dot notation, charsets, callbacks, adapters, and round trips.
+- Focused audit tests cover `arrayLimit` equality, comma-array limit overflow, duplicate implicit-array limit throws, double-encoded `decodeDotInKeys`, default encoded `encodeDotInKeys` round-trips, charset sentinels, numeric entities, custom decoder/encoder/filter/formatter/sort hooks, deprecated `indices`, and Date/Buffer adapters.
 - Keep private helper behavior covered through public parse/stringify tests unless a helper becomes complex enough to justify a separate `tests/test_<helper>.cpp`.
 
 ## Integration tests
@@ -17,14 +17,14 @@
 - upstream compatibility layout: aggregate C++ file `tests/test_qs.cpp` currently adapts representative cases from upstream `test/parse.js`, `test/stringify.js`, `test/utils.js`, README examples, and `test/empty-keys-cases.js`.
 - upstream-to-local coverage map:
   - `test/parse.js` simple strings, nesting, arrays, sparse arrays, depth, duplicates, limits, delimiters, empty values, and encoded brackets -> `tests/test_qs.cpp` `QsParseTest` and `QsEdgeCaseTest`.
-  - `test/stringify.js` primitive values, nested objects, array formats, null handling, encoding, delimiters, and comma round trip -> `tests/test_qs.cpp` `QsStringifyTest`.
+  - `test/stringify.js` primitive values, nested objects, array formats, null handling, encoding, delimiters, callbacks, Date/Buffer handling via adapters, and comma round trip -> `tests/test_qs.cpp` `QsStringifyTest`.
   - README parse/stringify examples -> `tests/test_qs.cpp` round-trip tests plus `examples/parse_roundtrip.cpp` and `examples/array_formats.cpp`.
   - `test/empty-keys-cases.js` default empty-key dropping -> partially covered by leading/trailing delimiter tests; full fixture table should be added.
 - omitted upstream cases:
   - Invalid option type tests are not meaningful because C++ option fields are typed.
   - `allowPrototypes` and `plainObjects` tests are runtime-object-shape behavior and are intentionally omitted.
-  - Custom encoder/decoder/filter/sort/serializeDate cases are deferred.
-  - Date, Buffer, Symbol, BigInt, function, and `undefined` stringify cases are omitted for v0 because `JsonValue` cannot represent those JavaScript values.
+  - Date and Buffer object identity tests are adapted through explicit `toQsValue()` helpers because `JsonValue` cannot carry those object instances directly.
+  - Symbol, BigInt, function, and `undefined` stringify cases are omitted for v0 because `JsonValue` cannot represent those JavaScript values.
   - Browser bundling and npm packaging tests are not applicable to the C++ companion.
 
 ## Security and fail-closed tests
@@ -70,3 +70,13 @@ Record exact commands run, service versions, and notable environment variables.
 - 2026-05-03: `./build-libgen/examples/array_formats` and `./build-libgen/examples/parse_roundtrip 'a[b]=1&a[c]=2&tags[]=c&tags[]=cpp'` passed and matched docs examples.
 - 2026-05-03: `python3 docs/build.py` passed with Doxygen and Sphinx `-W --keep-going`.
 - 2026-05-03: `python3 <libgen>/scripts/check-port-validation.py <repo>` passed after the docs build.
+- 2026-05-03: `cmake --build build-libgen --target test_qs -j2` passed after adding upstream parity callbacks/adapters.
+- 2026-05-03: `ctest --test-dir build-libgen --output-on-failure` passed: 107/107 tests after charset sentinel, numeric entity, callback, deprecated `indices`, and Date/Buffer adapter coverage.
+- 2026-05-03: `python3 docs/build.py` passed after documenting the new public callback aliases and advanced parity guide.
+- 2026-05-03: `cmake --build build-libgen -j2` passed for the library, tests, and examples after the public-header updates.
+- 2026-05-03: `./build-libgen/examples/array_formats` and `./build-libgen/examples/parse_roundtrip 'a[b]=1&a[c]=2&tags[]=c&tags[]=cpp'` passed after the callback/adapter update.
+- 2026-05-03: `python3 <libgen>/scripts/check-port-readiness.py --strict <repo>` passed after reconciling the required deferred-feature checklist wording with the implemented parity status.
+- 2026-05-03: `python3 <libgen>/scripts/check-port-validation.py <repo>` passed after the updated docs and validation notes.
+- 2026-05-03: `cmake --build build-libgen --target test_qs -j2 && ctest --test-dir build-libgen --output-on-failure` passed: 108/108 tests after tightening comma custom-decoder parity.
+- 2026-05-03: `./build-libgen/examples/array_formats` and `./build-libgen/examples/parse_roundtrip 'a[b]=1&a[c]=2&tags[]=c&tags[]=cpp'` passed after the comma decoder adjustment.
+- 2026-05-03: `python3 docs/build.py` passed after the final public-header documentation update.
