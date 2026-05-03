@@ -3,7 +3,7 @@ Options
 
 Aggregate option structs consumed by the two top-level functions.
 Every field has a sensible default matching the npm qs package; use
-designated initialisers to override just what you need.
+designated initializers to override just what you need.
 
 Common parse choices
 --------------------

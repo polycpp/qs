@@ -2,9 +2,8 @@ Installation
 ============
 
 qs targets C++20 and builds with clang ≥ 14 or gcc ≥ 11. It depends on
-the base `polycpp <https://github.com/enricohuang/polycpp>`_ library and
-does not add another runtime dependency. GoogleTest is fetched only when
-the qs test suite is enabled.
+the base polycpp library and does not add another runtime dependency.
+GoogleTest is fetched only when the qs test suite is enabled.
 
 CMake FetchContent (recommended)
 --------------------------------
@@ -25,8 +24,9 @@ Add the library to your ``CMakeLists.txt``:
    add_executable(my_app main.cpp)
    target_link_libraries(my_app PRIVATE polycpp::qs)
 
-The first configure pulls ``polycpp`` transitively, so the build tree may be
-large. Pin ``GIT_TAG`` to a specific commit for reproducible builds.
+The first configure pulls ``polycpp`` transitively through qs, so the build
+tree may be large. Pin ``GIT_TAG`` to a specific qs commit for reproducible
+builds.
 
 Using a local clone
 -------------------

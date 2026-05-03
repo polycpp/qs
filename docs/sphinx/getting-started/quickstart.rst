@@ -15,6 +15,7 @@ Full example
 
 .. code-block:: cpp
 
+   #include <cstdint>
    #include <iostream>
    #include <polycpp/core/json.hpp>
    #include <polycpp/qs/qs.hpp>
@@ -51,7 +52,8 @@ Full example
                     dotted) << '\n';
    }
 
-Compile it with the same CMake wiring from :doc:`installation`:
+Save the snippet as ``main.cpp`` in a project that uses the
+``FetchContent`` wiring from :doc:`installation`, then build and run it:
 
 .. code-block:: bash
 
@@ -79,10 +81,12 @@ What just happened
    result is always a top-level ``JsonObject`` — empty input gives an
    empty object, not a null.
 
-2. :cpp:func:`polycpp::qs::stringify` walks a ``JsonValue`` and emits
-   ``key=value`` pairs joined by the configured delimiter. The
+2. :cpp:func:`polycpp::qs::stringify` walks a top-level ``JsonObject``
+   root and emits ``key=value`` pairs joined by the configured delimiter.
+   The values inside that object may be strings, numbers, booleans, nulls,
+   arrays, or nested objects. The
    :cpp:member:`polycpp::qs::StringifyOptions::arrayFormat` field
-   picks the flavour — the default
+   picks the flavor; the default
    :cpp:enumerator:`polycpp::qs::ArrayFormat::indices` writes
    ``tag[0]=c&tag[1]=cpp``, whereas
    :cpp:enumerator:`polycpp::qs::ArrayFormat::brackets` writes
@@ -90,8 +94,8 @@ What just happened
 
 3. Brackets are percent-encoded by default (``%5B``/``%5D``) because
    they're reserved characters in a URL path. When you're piping the
-   output into somewhere that treats them literally — a log line, a
-   debug print — set
+   output into somewhere that treats them literally, such as a log line or
+   a debug print, set
    :cpp:member:`polycpp::qs::StringifyOptions::encode` to ``false``
    to see the raw form. Dot notation is the other readability win
    (:cpp:member:`polycpp::qs::StringifyOptions::allowDots`).

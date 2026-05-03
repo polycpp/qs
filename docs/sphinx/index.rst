@@ -4,7 +4,7 @@ qs
 **Nested query string parse and stringify**
 
 Parse URL query strings into nested :cpp:class:`polycpp::JsonValue`
-trees, and serialize them back - with the bracket notation
+trees, then serialize them back with the bracket notation
 (``a[b][c]=d``), dot notation, comma arrays, and duplicate-key
 handling that plain ``application/x-www-form-urlencoded`` alone never
 covers. A C++20 port of npm qs v6 focused on the shapes every REST
@@ -30,10 +30,10 @@ API actually sees.
    .. grid-item-card:: Drop-in familiarity
       :margin: 1
 
-      Two entry points straight from npm qs — ``parse`` and
-      ``stringify`` — with familiar option names (``allowDots``,
-      ``arrayFormat``, ``duplicates``, ``strictNullHandling``) exposed
-      as typed C++ structs.
+      Two familiar entry points, ``parse`` and ``stringify``, with
+      option names from npm qs (``allowDots``, ``arrayFormat``,
+      ``duplicates``, ``strictNullHandling``) exposed as typed C++
+      structs.
 
    .. grid-item-card:: C++20 native
       :margin: 1
@@ -58,15 +58,19 @@ API actually sees.
 Getting started
 ---------------
 
-.. code-block:: bash
+.. code-block:: cmake
 
    # With FetchContent (recommended)
+   include(FetchContent)
+
    FetchContent_Declare(
        polycpp_qs
        GIT_REPOSITORY https://github.com/polycpp/qs.git
        GIT_TAG        master
    )
    FetchContent_MakeAvailable(polycpp_qs)
+
+   add_executable(my_app main.cpp)
    target_link_libraries(my_app PRIVATE polycpp::qs)
 
 :doc:`Installation <getting-started/installation>` · :doc:`Quickstart <getting-started/quickstart>` · :doc:`Tutorials <tutorials/index>` · :doc:`API reference <api/index>`

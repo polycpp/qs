@@ -1,7 +1,7 @@
 Choose an array format for stringify
 ====================================
 
-**When to reach for this:** you're serialising a ``JsonArray`` and
+**When to reach for this:** you're serializing a ``JsonArray`` and
 need to match a consumer that expects a specific shape — Rails, PHP,
 Go's ``net/url``, Elasticsearch, a browser ``<form>``.
 
